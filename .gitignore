@@ -1,0 +1,34 @@
+# Local state and secrets
+.local/
+.ctf-state/
+**/.env
+**/flag.txt
+
+# Python / Node environments and caches
+.venv/
+venv/
+node_modules/
+**/__pycache__/
+**/*.py[cod]
+**/.pytest_cache/
+**/.mypy_cache/
+**/.ruff_cache/
+
+# Challenge scratch and generated data
+c/**/work/*
+c/**/output/*
+!c/**/work/.gitkeep
+!c/**/output/.gitkeep
+
+# Common local caches and crash output
+.cache/
+c/**/work/core
+c/**/work/core.*
+*.log
+
+# Editors and OS metadata
+.idea/
+.vscode/
+.DS_Store
+Thumbs.db
+Desktop.ini

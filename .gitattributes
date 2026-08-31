@@ -1,0 +1,48 @@
+* text=auto
+
+*.md text eol=lf
+*.json text eol=lf
+*.yaml text eol=lf
+*.yml text eol=lf
+*.py text eol=lf
+*.sh text eol=lf
+Dockerfile text eol=lf
+Makefile text eol=lf
+
+*.ps1 text eol=crlf
+*.psd1 text eol=crlf
+*.psm1 text eol=crlf
+*.cmd text eol=crlf
+*.bat text eol=crlf
+
+*.7z binary
+*.apk binary
+*.bin binary
+*.cap binary
+*.class binary
+*.dd binary
+*.dll binary
+*.dmp binary
+*.e01 binary
+*.elf binary
+*.evtx binary
+*.exe binary
+*.gz binary
+*.iso binary
+*.jar binary
+*.jpg binary
+*.jpeg binary
+*.mp3 binary
+*.mp4 binary
+*.ova binary
+*.pcap binary
+*.pcapng binary
+*.pdf binary
+*.png binary
+*.raw binary
+*.so binary
+*.tar binary
+*.vmdk binary
+*.wav binary
+*.wasm binary
+*.zip binary

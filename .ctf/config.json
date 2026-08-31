@@ -1,0 +1,18 @@
+{
+  "schema_version": 1,
+  "challenge_root": "c",
+  "default_event": "practice",
+  "default_flag_regex": "(?i)[a-z0-9_]+\\{[^\\r\\n}]+\\}",
+  "linux_environment": "kali-linux",
+  "categories": {
+    "ai-ml": "ctf-ai-ml",
+    "crypto": "ctf-crypto",
+    "forensics": "ctf-forensics",
+    "malware": "ctf-malware",
+    "misc": "ctf-misc",
+    "osint": "ctf-osint",
+    "pwn": "ctf-pwn",
+    "reverse": "ctf-reverse",
+    "web": "ctf-web"
+  }
+}
