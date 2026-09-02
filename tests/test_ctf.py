@@ -1,12 +1,16 @@
 from __future__ import annotations
 
 import argparse
+import concurrent.futures
 import importlib.util
+import io
 import json
 import shutil
 import unittest
 import uuid
+from contextlib import redirect_stdout
 from pathlib import Path
+from unittest import mock
 
 
 SCRIPT = Path(__file__).resolve().parents[1] / "scripts" / "ctf.py"
@@ -58,6 +62,24 @@ class WorkspaceCliTests(unittest.TestCase):
         self.assertEqual(args.event, "speedrun-2026")
         self.assertEqual(args.flag_regex, r"FLAG\{[^}]+\}")
 
+    def test_verify_parser_accepts_options_after_challenge_and_solver_separator(self) -> None:
+        args = ctf.build_parser().parse_args(
+            ["verify", "c/example", "--timeout", "5", "--", "--mode", "fast"]
+        )
+        self.assertEqual(args.timeout, 5.0)
+        self.assertEqual(args.solver_args, ["--mode", "fast"])
+
+    def test_doctor_modes_are_mutually_exclusive(self) -> None:
+        with self.assertRaises(SystemExit):
+            ctf.build_parser().parse_args(["doctor", "--project-only", "--wsl-tools"])
+
+    @unittest.skipUnless(ctf.os.name == "nt", "Windows path mapping")
+    def test_windows_workspace_path_maps_to_wsl_mount(self) -> None:
+        self.assertEqual(
+            ctf.windows_path_to_wsl(Path(r"C:\lee-ctf")),
+            "/mnt/c/lee-ctf",
+        )
+
     def test_skill_manifest_changes_with_vendored_files(self) -> None:
         skill_root = ctf.SKILLS_ROOT / "ctf-demo"
         skill_root.mkdir(parents=True)
@@ -83,6 +105,18 @@ class WorkspaceCliTests(unittest.TestCase):
         after = ctf.read_json(ctf.SKILLS_MANIFEST)
         self.assertNotEqual(before["tree_sha256"], after["tree_sha256"])
 
+    def test_malformed_skills_lock_is_reported_cleanly(self) -> None:
+        ctf.write_json(ctf.SKILLS_LOCK, ["not", "an", "object"])
+        args = argparse.Namespace(
+            skills_root=str(ctf.SKILLS_ROOT),
+            commit=None,
+            output=str(ctf.SKILLS_MANIFEST),
+        )
+        with self.assertRaisesRegex(ValueError, "JSON root must be an object"):
+            ctf.cmd_skills_manifest(args)
+        with self.assertRaisesRegex(ValueError, "JSON root must be an object"):
+            ctf.build_parser()
+
     def test_new_triage_and_flag(self) -> None:
         create = argparse.Namespace(
             event="Test CTF 2026",
@@ -99,20 +133,225 @@ class WorkspaceCliTests(unittest.TestCase):
         sample.write_bytes(b"\x89PNG\r\n\x1a\nnoise flag{self_test}\n")
 
         triage = argparse.Namespace(challenge=str(challenge), hash_limit_mb=512, flag_scan_mb=32)
-        self.assertEqual(ctf.cmd_triage(triage), 0)
-        report = json.loads((challenge / "work" / "triage.json").read_text(encoding="utf-8"))
+        stdout = io.StringIO()
+        with redirect_stdout(stdout):
+            self.assertEqual(ctf.cmd_triage(triage), 0)
+        report_text = (challenge / "work" / "triage.json").read_text(encoding="utf-8")
+        report = json.loads(report_text)
         self.assertEqual(report["files"][0]["type"], "PNG")
-        self.assertIn("flag{self_test}", report["flag_candidates"])
+        self.assertEqual(
+            report["flag_candidates"][0]["sha256"],
+            ctf._candidate_sha256("flag{self_test}"),
+        )
+        self.assertNotIn("flag{self_test}", report_text)
+        self.assertNotIn("flag{self_test}", stdout.getvalue())
+        local_triage = (self.root / ".local" / "triage-candidates.json").read_text(
+            encoding="utf-8"
+        )
+        self.assertIn("flag{self_test}", local_triage)
 
         record = argparse.Namespace(
             challenge=str(challenge),
             value="flag{self_test}",
             allow_nonmatching=False,
+            allow_unverified=True,
         )
         self.assertEqual(ctf.cmd_flag(record), 0)
         metadata = json.loads((challenge / "challenge.json").read_text(encoding="utf-8"))
         self.assertEqual(metadata["status"], "solved")
         self.assertNotIn("flag{self_test}", (challenge / "challenge.json").read_text(encoding="utf-8"))
+
+    def test_new_separates_source_and_target_urls(self) -> None:
+        create = argparse.Namespace(
+            event="Example 2026",
+            category="web",
+            name="URL Split",
+            source_url="https://ctf.example/challenges/1",
+            target_url="https://target.example/",
+            url=None,
+            host=None,
+            port=None,
+            flag_regex=r"FLAG\{[^}]+\}",
+        )
+        self.assertEqual(ctf.cmd_new(create), 0)
+        challenge = self.root / "c" / "example-2026" / "web" / "url-split"
+        metadata = ctf.read_json(challenge / "challenge.json")
+        self.assertEqual(metadata["source_url"], create.source_url)
+        self.assertEqual(metadata["target"]["url"], create.target_url)
+
+    def test_verify_proof_gates_flag_recording(self) -> None:
+        create = argparse.Namespace(
+            event="Proof 2026",
+            category="misc",
+            name="Proof Gate",
+            source_url=None,
+            target_url=None,
+            url=None,
+            host=None,
+            port=None,
+            flag_regex=r"FLAG\{[^}]+\}",
+        )
+        self.assertEqual(ctf.cmd_new(create), 0)
+        challenge = self.root / "c" / "proof-2026" / "misc" / "proof-gate"
+        live_flag = "FLAG{verified_locally}"
+        (challenge / "solve" / "solve.py").write_text(
+            f"print(bytes.fromhex({live_flag.encode('utf-8').hex()!r}).decode('utf-8'))\n",
+            encoding="utf-8",
+        )
+
+        unverified = argparse.Namespace(
+            challenge=str(challenge),
+            value=live_flag,
+            allow_nonmatching=False,
+            allow_unverified=False,
+        )
+        with self.assertRaisesRegex(ValueError, "verification proof"):
+            ctf.cmd_flag(unverified)
+
+        verify = argparse.Namespace(
+            challenge=str(challenge),
+            timeout=5.0,
+            max_output_mb=1.0,
+            solver_args=[],
+            record=False,
+        )
+        self.assertEqual(ctf.cmd_verify(verify), 0)
+        proof = (challenge / "evidence" / "solve-verification.json").read_text(encoding="utf-8")
+        self.assertNotIn(live_flag, proof)
+        late_input = challenge / "input" / "late.bin"
+        late_input.write_bytes(b"changed after verification")
+        with self.assertRaisesRegex(ValueError, "input artifacts"):
+            ctf.cmd_flag(unverified)
+        late_input.unlink()
+        helper = challenge / "solve" / "helper.py"
+        helper.write_text("changed after verification\n", encoding="utf-8")
+        with self.assertRaisesRegex(ValueError, "solve tree"):
+            ctf.cmd_flag(unverified)
+        helper.unlink()
+        metadata_path = challenge / "challenge.json"
+        metadata = ctf.read_json(metadata_path)
+        original_target = dict(metadata["target"])
+        metadata["target"]["url"] = "https://changed.example/"
+        ctf.write_json_atomic(metadata_path, metadata)
+        with self.assertRaisesRegex(ValueError, "scope changed"):
+            ctf.cmd_flag(unverified)
+        metadata["target"] = original_target
+        ctf.write_json_atomic(metadata_path, metadata)
+        notes_path = challenge / "notes.md"
+        original_notes = notes_path.read_bytes()
+        notes_path.write_bytes(original_notes + b"tracked change\n")
+        with self.assertRaisesRegex(ValueError, "protected challenge files changed"):
+            ctf.cmd_flag(unverified)
+        notes_path.write_bytes(original_notes)
+        self.assertEqual(ctf.cmd_flag(unverified), 0)
+
+    def test_agent_work_isolated_and_no_overwrite(self) -> None:
+        create = argparse.Namespace(
+            event="Agents 2026",
+            category="reverse",
+            name="Parallel",
+            source_url=None,
+            target_url=None,
+            url=None,
+            host=None,
+            port=None,
+            flag_regex=r"FLAG\{[^}]+\}",
+        )
+        self.assertEqual(ctf.cmd_new(create), 0)
+        challenge = self.root / "c" / "agents-2026" / "reverse" / "parallel"
+        work = argparse.Namespace(challenge=str(challenge), name="Static Pass", reuse=False)
+        self.assertEqual(ctf.cmd_agent_work(work), 0)
+        findings = challenge / "work" / "agents" / "static-pass" / "findings.md"
+        self.assertTrue(findings.is_file())
+        with self.assertRaisesRegex(ValueError, "already exists"):
+            ctf.cmd_agent_work(work)
+
+        reserved = argparse.Namespace(challenge=str(challenge), name="CON.txt", reuse=False)
+        self.assertEqual(ctf.cmd_agent_work(reserved), 0)
+        self.assertTrue(
+            (challenge / "work" / "agents" / "_con.txt" / "findings.md").is_file()
+        )
+
+    def test_agent_work_same_name_is_created_atomically(self) -> None:
+        challenge = self.root / "c" / "agents" / "misc" / "atomic"
+        (challenge / "work").mkdir(parents=True)
+        ctf.write_json(challenge / "challenge.json", {"flag_regex": r"FLAG\{[^}]+\}"})
+        args = argparse.Namespace(challenge=str(challenge), name="Same Agent", reuse=False)
+
+        def create_agent() -> str:
+            try:
+                ctf.cmd_agent_work(args)
+                return "created"
+            except ValueError:
+                return "exists"
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=2) as executor:
+            results = list(executor.map(lambda _value: create_agent(), range(2)))
+        self.assertCountEqual(results, ["created", "exists"])
+
+    def test_agent_work_rejects_reparse_like_work_directory(self) -> None:
+        challenge = self.root / "c" / "agents" / "misc" / "unsafe"
+        (challenge / "work").mkdir(parents=True)
+        ctf.write_json(challenge / "challenge.json", {"flag_regex": r"FLAG\{[^}]+\}"})
+        original = ctf._is_link_like
+
+        def link_check(path: Path) -> bool:
+            return Path(path) == challenge / "work" or original(Path(path))
+
+        args = argparse.Namespace(challenge=str(challenge), name="Agent", reuse=False)
+        with mock.patch.object(ctf, "_is_link_like", side_effect=link_check):
+            with self.assertRaisesRegex(ValueError, "link or junction"):
+                ctf.cmd_agent_work(args)
+
+    def test_parallel_flag_storage_keeps_every_challenge(self) -> None:
+        challenges: list[Path] = []
+        for index in range(8):
+            challenge = self.root / "c" / "flags" / "misc" / f"challenge-{index}"
+            challenge.mkdir(parents=True)
+            ctf.write_json(
+                challenge / "challenge.json",
+                {"flag_regex": r"FLAG\{[^}]+\}", "status": "new", "solved_at": None},
+            )
+            challenges.append(challenge)
+
+        with concurrent.futures.ThreadPoolExecutor(max_workers=4) as executor:
+            futures = [
+                executor.submit(ctf._store_flag, challenge, {}, f"FLAG{{value_{index}}}")
+                for index, challenge in enumerate(challenges)
+            ]
+            for future in futures:
+                future.result(timeout=10)
+
+        flags = ctf.read_json(ctf.LOCAL_FLAGS)
+        self.assertEqual(len(flags), len(challenges))
+        for challenge in challenges:
+            metadata = ctf.read_json(challenge / "challenge.json")
+            self.assertEqual(metadata["status"], "solved")
+
+    def test_flag_metadata_failure_restores_local_store(self) -> None:
+        challenge = self.root / "c" / "flags" / "misc" / "rollback"
+        challenge.mkdir(parents=True)
+        metadata_path = challenge / "challenge.json"
+        ctf.write_json(
+            metadata_path,
+            {"flag_regex": r"FLAG\{[^}]+\}", "status": "new", "solved_at": None},
+        )
+        metadata_before = metadata_path.read_bytes()
+        original = ctf.write_json_atomic
+        failed_once = False
+
+        def fail_metadata(path: Path, value: object) -> None:
+            nonlocal failed_once
+            if Path(path) == metadata_path and not failed_once:
+                failed_once = True
+                raise OSError("simulated metadata failure")
+            original(Path(path), value)
+
+        with mock.patch.object(ctf, "write_json_atomic", side_effect=fail_metadata):
+            with self.assertRaisesRegex(OSError, "simulated metadata failure"):
+                ctf._store_flag(challenge, {}, "FLAG{rollback}")
+        self.assertFalse(ctf.LOCAL_FLAGS.exists())
+        self.assertEqual(metadata_path.read_bytes(), metadata_before)
 
 
 if __name__ == "__main__":

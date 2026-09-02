@@ -1,0 +1,3 @@
+# Runtime compatibility pins missing from the upstream installer.
+cysignals==1.12.6
+pycparser==2.22

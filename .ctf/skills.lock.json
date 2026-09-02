@@ -35,5 +35,11 @@
       "path": ".agents/skills/LICENSE.ctf-skills",
       "sha256": "25fb2cfc684b4f1e510e8ecf2deeeedfe9ee80ebae4c41b806baa439857a394b"
     }
+  ],
+  "local_files": [
+    {
+      "path": ".agents/skills/scripts/README.md",
+      "sha256": "503f43cc09d4af979bce2a07bb848a1489cf156fe4b3b93d4c6e8bbe3991698c"
+    }
   ]
 }

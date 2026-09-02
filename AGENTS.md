@@ -35,13 +35,22 @@ This repository is dedicated to authorized Capture The Flag challenges and chall
 
 Use `ctf-reverse` before `ctf-pwn` when the binary's behavior or vulnerability is not understood. Add a second category skill when evidence shows a cross-category chain.
 
+Local routing overrides take precedence over broader or vendored routing guidance:
+
+- Route AI/ML challenges directly to `ctf-ai-ml`, including adversarial models, model extraction, training-data attacks, and LLM prompt-injection challenges.
+- Route Python, Bash, `eval`, AST, restricted-builtins, and language-level jails to `ctf-misc`. Route native syscall, seccomp, kernel, container, or process-isolation escapes to `ctf-pwn`; start with `ctf-reverse` if the native program's behavior is still unknown.
+- Use `ctf-malware` when malicious behavior, C2/config extraction, indicators, unpacking, or anti-analysis is central. Use `ctf-reverse` when understanding compiled or obfuscated program logic is central. Use `ctf-forensics` when evidence acquisition or reconstruction from disks, memory, logs, or packet captures is central. Add the next skill only when the evidence crosses that boundary.
+- Use `ctf-osint` only for discovery from public sources. An unknown hash, coordinate, username, or identifier is OSINT only when public-source lookup is the intended path; analyze supplied artifacts with the relevant crypto, forensics, malware, or reverse skill.
+
 ## Execution rules
 
 - Search with `rg`/`rg --files` first when available.
 - Prefer deterministic scripts over long manual command histories.
 - Put timeouts on network calls, brute force, fuzzers, and symbolic execution. Checkpoint expensive searches.
 - Revisit assumptions after two failed variants or ten minutes without new evidence.
-- Keep secrets and flags in `.local/`; it is ignored by Git. Do not place a live flag in tracked metadata.
+- Keep secrets and live flag values only in `.local/`; it is ignored by Git. Do not place a live flag in tracked metadata, notes, evidence, or write-ups.
+- Have reproducible solvers emit the candidate on stdout without hard-coding or persisting it; `ctf verify` rejects candidate bytes found outside immutable `input/` or `.local/`.
+- Local flag policy overrides `ctf-writeup` guidance: tracked write-ups must redact the recovered value and may retain only the flag format, a non-reversible digest, or a reference to `.local/`.
 - Do not claim a solve until the candidate matches the expected format, is tied to the intended artifact or service, and can be reproduced once.
 - Do not modify vendored files under `.agents/skills`; put local helpers under `shared/` or `scripts/`.
 - Do not clean, overwrite, or reset another challenge directory.

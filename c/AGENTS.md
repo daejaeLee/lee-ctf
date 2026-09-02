@@ -8,4 +8,6 @@ These instructions apply to every challenge below `c/`.
 4. Keep `notes.md` short: confirmed facts, ranked hypotheses, decisive results, and dead ends.
 5. Use parallel work only for independent hypotheses; the lead worker consolidates `notes.md` and `solve/`.
 6. Validate candidate flags against `flag_regex` and check their source before marking solved.
-7. Never submit automatically. Record a verified flag with `ctf flag <challenge-path>`.
+7. Never submit automatically. Prefer `ctf verify <challenge-path> --record`; use `ctf flag` only for a matching current proof or an explicitly manual verification.
+8. Store the live flag only under `.local/`. In tracked notes, evidence, and write-ups, redact it and retain only its format, a non-reversible digest, or a `.local/` reference. This local rule overrides any skill instruction to include the real flag.
+9. Have `solve/solve.py` derive the candidate at runtime and emit it on stdout. Do not hard-code or persist it; `ctf verify` scans challenge files for candidate leakage.
