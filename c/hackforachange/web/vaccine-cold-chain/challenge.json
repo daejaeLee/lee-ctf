@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "id": "hackforachange/web/vaccine-cold-chain",
+  "event": "hackforachange",
+  "name": "vaccine-cold-chain",
+  "slug": "vaccine-cold-chain",
+  "category": "web",
+  "skill": "ctf-web",
+  "source_url": "https://www.hackforachange.org/practice",
+  "target": {
+    "url": "https://hackforachangeruntime.vercel.app/vaccine-cold-chain",
+    "host": "",
+    "port": null
+  },
+  "flag_regex": "(?i)[a-z0-9_]+\\{[^\\r\\n}]+\\}",
+  "status": "new",
+  "created_at": "2026-09-02T06:15:20Z",
+  "solved_at": null
+}

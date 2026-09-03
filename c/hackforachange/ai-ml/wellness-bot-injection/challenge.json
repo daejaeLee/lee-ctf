@@ -1,0 +1,19 @@
+{
+  "schema_version": 1,
+  "id": "hackforachange/ai-ml/wellness-bot-injection",
+  "event": "hackforachange",
+  "name": "wellness-bot-injection",
+  "slug": "wellness-bot-injection",
+  "category": "ai-ml",
+  "skill": "ctf-ai-ml",
+  "source_url": "https://www.hackforachange.org/practice",
+  "target": {
+    "url": "https://hackforachangeruntime.vercel.app/",
+    "host": "",
+    "port": null
+  },
+  "flag_regex": "(?i)[a-z0-9_]+\\{[^\\r\\n}]+\\}",
+  "status": "new",
+  "created_at": "2026-09-03T01:24:28Z",
+  "solved_at": null
+}

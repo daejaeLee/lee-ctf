@@ -1,144 +1,106 @@
 # lee-ctf
 
-Fast, reproducible workspace for authorized CTF challenges. The project keeps original inputs immutable, separates scratch work from final solve artifacts, and exposes the installed `ctf-skills` collection directly to Codex.
+승인된 CTF와 보안 연구를 위한 재현 가능한 Codex 작업 공간입니다. 원본
+아티팩트는 보존하고, 실험·증거·최종 솔버를 분리하며, 라이브 플래그와
+자격 증명은 Git에 저장하지 않습니다.
 
-## Quick start
+## 빠른 시작
 
 ```powershell
-# Verify project integrity quickly; add --wsl-tools for the 58-item Kali check
+# 프로젝트 및 Kali 도구 상태 확인
 .\ctf.ps1 doctor --project-only
 .\ctf.ps1 doctor --wsl-tools
 
-# Enforce the exact locked skill tree and strict SKILL.md frontmatter
+# 프로젝트 스킬 무결성 검사
 python scripts\check_skill_snapshot.py
 
-# Create a challenge; keep the challenge page separate from the authorized target
-.\ctf.ps1 new --event dreamhack-2026 --category web --name baby-sqli `
-  --source-url https://ctf.example/challenges/1 --target-url https://target.example/
-
-# Import immutable originals, verify them, then triage
-.\ctf.ps1 import c\dreamhack-2026\web\baby-sqli C:\Downloads\challenge.zip
-.\ctf.ps1 verify-input c\dreamhack-2026\web\baby-sqli
-.\ctf.ps1 triage c\dreamhack-2026\web\baby-sqli
-
-# Create an isolated parallel-agent notebook
-.\ctf.ps1 agent-work c\dreamhack-2026\web\baby-sqli sqli-pass
-
-# Reproduce the solver, store only a redacted proof, then record the flag locally
-.\ctf.ps1 verify c\dreamhack-2026\web\baby-sqli --record
-
-# List all challenge states
-.\ctf.ps1 status
+# 새 challenge 생성, 원본 가져오기, triage, 재현 검증
+.\ctf.ps1 new --event example-2026 --category web --name baby-sqli
+.\ctf.ps1 import c\example-2026\web\baby-sqli C:\Downloads\challenge.zip
+.\ctf.ps1 verify-input c\example-2026\web\baby-sqli
+.\ctf.ps1 triage c\example-2026\web\baby-sqli
+.\ctf.ps1 verify c\example-2026\web\baby-sqli --record
 ```
 
-`triage` never writes or prints a plaintext candidate in tracked/scratch reports. It records only SHA-256 and UTF-8 length in `work/triage.json`; any plaintext candidate is kept in the ignored `.local/triage-candidates.json` store.
+CTF 전용 Codex 세션은 다음처럼 실행합니다. 이 래퍼는 해당 실행에만
+ECC와 문서·프레젠테이션·스프레드시트 등 비CTF 플러그인을 끄며, 전역
+Codex 설정이나 설치된 플러그인은 변경하지 않습니다.
 
-Open the generated challenge directory in Codex. Use `solve-challenge` when the category is uncertain, or invoke the matching `ctf-*` skill directly when it is known. Newly installed skills are detected automatically; restart Codex if they do not appear in the selector during the current session.
+```powershell
+.\scripts\codex-ctf.ps1
+```
 
-## Layout
+## 작업 구조
 
 ```text
-.agents/skills/   Project-scoped CTF skills
-.ctf/             Workspace and skill-source metadata
-c/                Challenges: c/<event>/<category>/<slug>
-shared/           Reusable helpers, payloads, and snippets
-templates/        Files copied into every new challenge
-scripts/ctf.py    Dependency-free workspace CLI
-scripts/check_skill_snapshot.py  Strict skill snapshot validator
-scripts/install_ctf_tools.sh     Stable shim for the vendored tool installer
-scripts/Install-CtfWsl.ps1       Repeatable Kali dependency/tool bootstrap with final verification
-scripts/Invoke-CtfWsl.ps1        Run the workspace CLI in the Kali CTF venv
-scripts/ctf-python-compat.txt    Python 3.13 compatibility overlay
-scripts/solve_verification.py    Bounded solver runner and redacted proof writer
-scripts/skill_source.py          Read-only source check and safe update staging
-scripts/Test-Ctf.ps1             PowerShell 5.1 smoke test
-ctf.ps1           PowerShell 5.1-compatible entrypoint
+.agents/skills/  프로젝트 CTF 스킬(벤더 파일: 직접 수정 금지)
+.ctf/            스킬 및 워크스페이스 메타데이터
+c/               Challenge: c/<event>/<category>/<slug>
+shared/          재사용 가능한 helper, payload, 온디맨드 참고 자료
+scripts/         검증, 설치, PowerShell/WSL 자동화
+templates/       새 challenge에 복사되는 템플릿
+ctf.ps1          PowerShell 5.1 호환 진입점
 ```
 
-Each challenge contains:
+각 challenge는 아래 구조를 사용합니다.
 
 ```text
-challenge.json    Machine-readable metadata and target scope
-AGENTS.md          Challenge-local scope for Codex
-README.md          Challenge description and quick commands
-notes.md           Facts, hypotheses, and dead ends
-input/             Original files; never edit in place
-work/              Disposable experiments (Git-ignored)
-solve/             Final reproducible solver/exploit
-output/            Raw/generated output (Git-ignored)
-evidence/          Small curated proof for the write-up
-writeup.md         Final handoff after solving
+challenge.json   기계 판독 메타데이터와 승인된 target 범위
+AGENTS.md        challenge-local 규칙
+README.md        문제 설명과 빠른 명령
+input/           원본 입력(불변)
+work/            폐기 가능한 실험
+solve/            최종 재현 솔버/익스플로잇
+output/           생성 출력
+evidence/         추린 증거
+notes.md          확인된 사실, 가설, 실패 경로
+writeup.md        플래그를 가린 최종 handoff
 ```
 
-The short `c/` root is intentional: Windows long-path support is currently disabled, and extracted CTF artifacts often have deeply nested names.
+## CTF 스킬 라우팅
 
-## Installed skills
+| 분야 | 스킬 |
+| --- | --- |
+| AI / ML | `ctf-ai-ml` |
+| Crypto | `ctf-crypto` |
+| Forensics | `ctf-forensics` |
+| Malware | `ctf-malware` |
+| Misc / jail | `ctf-misc` |
+| OSINT | `ctf-osint` |
+| Pwn | `ctf-pwn` |
+| Reverse | `ctf-reverse` |
+| Web | `ctf-web` |
 
-The repository-local skills come from [daejaeLee/ctf-skills](https://github.com/daejaeLee/ctf-skills):
+분류가 불명확하면 `solve-challenge`를 사용합니다. native 바이너리의
+동작이 아직 불명확하면 먼저 `ctf-reverse`를 사용하고, 취약점 원시값이
+확인된 뒤에 `ctf-pwn`으로 전환합니다.
 
-- `solve-challenge`
-- `ctf-ai-ml`, `ctf-crypto`, `ctf-forensics`, `ctf-malware`
-- `ctf-misc`, `ctf-osint`, `ctf-pwn`, `ctf-reverse`, `ctf-web`
-- `ctf-writeup`
+`shared/ctf-ecc-on-demand.md`에는 소스 취약점 triage, Python 솔버 품질,
+구조화 파싱, EVM Keccak 주의사항 등 선별된 ECC 지침이 있습니다. 필요할
+때만 읽어 스킬 context를 작게 유지합니다.
 
-The snapshot is pinned to commit `36c72e53a96a035791821caff7440882ea0f5c57`. Source metadata and the expected tree digest are recorded in `.ctf/skills.lock.json`; per-file SHA-256 values for all 118 vendored skill files live in `.ctf/skills.manifest.json`. Support and project-authored files inside `.agents/skills/` are pinned separately in the lock.
+## 환경
 
-Run `python scripts\check_skill_snapshot.py` for the authoritative strict check. It rejects unknown or missing skill directories and files, checksum changes, symlinks, unbounded top-level frontmatter, missing `name`/`description` fields, and duplicate names or top-level keys. Candidate update staging applies the same link and unexpected-skill rejection before it reports a snapshot as validated.
+- Windows 호스트 스크립트는 PowerShell 5.1 호환성을 유지합니다.
+- Linux 우선 pwn/reverse/forensics/malware 작업은 Kali WSL을 사용합니다.
+- Kali CTF 환경에서 실행하려면:
 
-`.ctf/config.json` is the canonical place for category-to-skill routing and the default event/flag pattern used by the CLI.
+  ```powershell
+  powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Invoke-CtfWsl.ps1 `
+    verify c\example-2026\pwn\example --record
+  ```
 
-Check the remote first, then clone and validate a candidate snapshot under the ignored `.cache/` directory. Staging never promotes or modifies `.agents/skills/`:
+- 필요한 도구는 `scripts\Install-CtfWsl.ps1`로 설치하고,
+  `doctor --wsl-tools`로 다시 검증할 수 있습니다.
 
-```powershell
-.\ctf.ps1 skills-check --strict
-.\ctf.ps1 skills-stage
-```
+## 보안 및 재현성
 
-Promotion is intentionally not automated because `.agents/skills/` is vendored. During an explicit maintenance update, replace only the locked skill directories and support files from the validated stage, preserve every `local_files` entry, then regenerate the integrity snapshot with:
+- `input/`은 수정하지 않습니다. 복사본을 `work/`에서 분석합니다.
+- 솔버는 플래그 후보를 런타임에 도출해 stdout으로만 출력합니다.
+- 라이브 플래그·토큰·자격 증명은 무시되는 `.local/`에만 둡니다.
+- tracked notes, evidence, write-up에는 플래그 원문을 쓰지 않습니다.
+- `ctf verify`는 후보 누출을 검사하고 증거·입력·솔버의 연결을 검증합니다.
+- 외부 플랫폼 제출은 사용자의 명시적 승인 후에만 수행합니다.
 
-```powershell
-.\ctf.ps1 skills-manifest --commit <40-character-source-commit>
-```
-
-Update `.ctf/skills.lock.json` in the same change: move the old `resolved_commit` to `previous_commit`, set `resolved_commit` to the staged commit, update the skill list and support-file hashes when they changed, and copy the printed tree digest. A partial lock update is invalid by design.
-
-Re-run the strict validator after updating lock metadata:
-
-```powershell
-python scripts\check_skill_snapshot.py
-```
-
-The upstream installer documents `scripts/install_ctf_tools.sh`. The repository-level shim makes that path stable, accepts options before or after one mode, applies the Python 3.13 compatibility overlay for `python`/`all`, and revalidates the required 58-item baseline if the vendored `all` mode reports an optional package failure. From Kali WSL:
-
-```bash
-bash scripts/install_ctf_tools.sh --verify
-# Install only when required:
-bash scripts/install_ctf_tools.sh all
-```
-
-For a fresh Kali WSL installation, the host-side bootstrap installs the required compilers and language runtimes as WSL root, runs the pinned installer in the correct user contexts, applies the small Python 3.13 compatibility overlay, and finishes with the 58-item verifier:
-
-```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Install-CtfWsl.ps1
-```
-
-It does not read or persist a sudo password. SageMath is not part of the 58-item verifier and currently has no package candidate in the configured Kali snapshot, so the shim warns but permits a complete 58/58 baseline when SageMath is the remaining optional failure. Install SageMath in a challenge-local environment only when a crypto problem needs it.
-
-When `solve/solve.py` needs pwntools, angr, or another Linux-only module, run the same CLI inside the Kali virtualenv (repository paths may use either `c\...` or `c/...`):
-
-```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Invoke-CtfWsl.ps1 `
-  verify c\dreamhack-2026\pwn\example --record
-```
-
-## Environment note
-
-Git, Python 3.13, Node.js, Git LFS, and Kali WSL are the supported baseline. The dedicated Kali environment currently passes all 58 checks from the pinned tool verifier. Use `doctor --wsl-tools` to recheck Linux-first pwn, reverse, forensics, and malware tooling. Keep conflicting Python dependencies in challenge-local environments or `~/.ctf-tools/venv` instead of the Windows host installation.
-
-Run the complete project smoke test with:
-
-```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Test-Ctf.ps1
-```
-
-Keep any remote repository private while a competition is active. Live flags and local credentials belong only under `.local/`, which Git ignores. Solvers should emit a candidate only on stdout; verification rejects an exact UTF-8/UTF-16/CP949 candidate persisted anywhere in the challenge outside immutable `input/` or `.local/`. It also binds the proof to metadata, the complete solve tree, inputs, and tracked/curated challenge files, contains descendant processes on Windows and Kali WSL, and time-bounds flag-regex evaluation. Tracked write-ups must redact the recovered value even when `ctf-writeup` would normally include it.
+원격 저장소는 대회가 진행 중이거나 challenge 자료가 비공개일 때 반드시
+private으로 유지하세요.
