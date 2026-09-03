@@ -174,6 +174,34 @@ Codex 전역 설정을 변경하지 않습니다. 신뢰할 수 없는 challenge
 격리된 Kali/VM에서 다루고, 알려지지 않은 악성 샘플을 Windows 호스트에서
 실행하지 마세요.
 
+### 전역 플러그인과 프로젝트 CTF 프로필
+
+Codex의 플러그인 설치·활성화 상태는 사용자 전역 디렉터리
+`%USERPROFILE%\.codex\`에 저장됩니다. 이 프로젝트는 전역 설정을 수정하거나
+ECC를 삭제하지 않습니다. 현재 기준으로 전역에는 아래 플러그인이 설치되어 있고
+모두 활성화되어 있습니다.
+
+| 전역 플러그인 그룹 | 상태 | 프로젝트 CTF 세션에서의 처리 |
+| --- | --- | --- |
+| `ecc@ecc` 2.2.1 | 설치·활성화 | 비활성화 — ECC는 다수의 범용 스킬을 한 번에 노출하므로 context 절약을 위해 제외 |
+| documents, pdf, spreadsheets, presentations, template-creator | 설치·활성화 | 비활성화 — 문서·프레젠테이션·스프레드시트 작업은 CTF 우선순위가 낮음 |
+| sites, computer-use, visualize | 설치·활성화 | 비활성화 — 일반 사이트 제작·GUI 조작·시각화 기능 |
+| browser | 설치·활성화 | **유지** — 로그인된 브라우저를 사용하는 웹 CTF 및 플랫폼 흐름에 필요 |
+| codex-app-tools | 설치·활성화 | 유지 — Codex 앱 연동 기반 기능 |
+| plugin-management, openai-templates, deep-research-work | 기본 설치·활성화 | Codex의 `INSTALLED_BY_DEFAULT` 정책으로 세션 오버라이드 대상이 아님 |
+
+ECC는 GitHub의 `affaan-m/ECC` 마켓플레이스에서 설치된 **전역 플러그인**입니다.
+현재 Codex CLI에서는 스킬 하나만 선택적으로 disable하는 기능이 없고, ECC는
+플러그인 단위로만 켜고 끌 수 있습니다. 따라서 CTF 프로필에서는 ECC 전체를
+제외하고, CTF에 유용한 ECC 지침만 프로젝트의
+[온디맨드 가이드](shared/ctf-ecc-on-demand.md)로 옮겨 필요할 때 참고합니다.
+
+전역 상태와 현재 설치 버전은 다음으로 확인할 수 있습니다.
+
+```powershell
+codex plugin list --json
+```
+
 기본 Codex 실행은 설치된 플러그인을 모두 로드할 수 있습니다. CTF 작업은
 다음 래퍼로 시작합니다.
 
@@ -181,12 +209,10 @@ Codex 전역 설정을 변경하지 않습니다. 신뢰할 수 없는 challenge
 .\scripts\codex-ctf.ps1
 ```
 
-이 래퍼는 **현재 Codex 실행에만** ECC 전체 번들과 documents, pdf,
-spreadsheets, presentations, template-creator, sites, computer-use, visualize
-플러그인을 비활성화합니다. 프로젝트의 `ctf-*` 스킬과 브라우저 기반 웹 CTF
-흐름은 유지합니다. 따라서 skill context budget을 CTF 풀이에 우선 배정하면서도
-글로벌 플러그인 설치 상태는 언제든 그대로 복구할 수 있습니다. 필요한 ECC
-지침은 [온디맨드 가이드](shared/ctf-ecc-on-demand.md)로 참조합니다.
+이 래퍼는 `-c plugins."<plugin-id>".enabled=false` 인수를 Codex에 전달하는
+방식으로, **현재 Codex 실행에만** 위 표의 비CTF 플러그인을 비활성화합니다.
+프로젝트의 `ctf-*` 스킬과 browser 플러그인은 유지합니다. 세션을 종료하면
+전역 플러그인 상태는 바뀌지 않으므로 별도 원복 명령은 필요 없습니다.
 
 다른 명령에 인수를 전달할 수도 있습니다.
 
