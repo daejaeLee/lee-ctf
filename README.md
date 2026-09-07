@@ -122,7 +122,7 @@ Kali 안에 설치해 Windows Python/패키지 환경을 오염시키지 않습�
 | 셸 | Windows PowerShell 5.1 | `ctf.ps1`, 설치·검증 스크립트 실행 |
 | 호스트 Python | Python 3.10 이상 | challenge 생성, 메타데이터 처리, 검증 CLI |
 | Linux 환경 | WSL 배포판 `kali-linux` | pwn, reverse, forensics, malware 및 Linux 전용 도구 |
-| Codex | Codex CLI 0.153.0에서 검증 | 프로젝트 지침·CTF 스킬·브라우저 기반 웹 흐름 |
+| Codex | Codex CLI 0.153.4에서 검증 | 프로젝트 지침·CTF 스킬·브라우저 기반 웹 흐름 |
 | Git | Git for Windows | 재현 가능한 프로젝트 상태와 솔버 관리 |
 
 프로젝트의 실제 기본값은 [`.ctf/config.json`](.ctf/config.json)에 있습니다.
@@ -213,6 +213,37 @@ codex plugin list --json
 방식으로, **현재 Codex 실행에만** 위 표의 비CTF 플러그인을 비활성화합니다.
 프로젝트의 `ctf-*` 스킬과 browser 플러그인은 유지합니다. 세션을 종료하면
 전역 플러그인 상태는 바뀌지 않으므로 별도 원복 명령은 필요 없습니다.
+
+### 적응형 모델 라우팅
+
+프로젝트 로컬 [`.codex/config.toml`](.codex/config.toml)은 root Codex를
+`gpt-5.6-terra` / `medium`으로 시작하고 Multi-Agent V2를 활성화합니다.
+카테고리 스킬은 **무엇을 분석할지**, 모델 라우팅은 **어느 수준의 모델이
+처리할지**를 정합니다. 둘은 서로 대체하지 않습니다.
+
+| 작업 성격 | 모델 / effort | 사용 기준 |
+| --- | --- | --- |
+| 독립적인 inventory, `rg`, 후보 추출, 반복 변환 | `gpt-5.6-luna` / `low` | 짧은 입력·결과 형식이 명확한 탐색 작업 |
+| 일반 분석, data flow, PoC·solver 구현, 디버깅 | `gpt-5.6-terra` / `medium` | 기본 coordinator 및 구현 작업 |
+| 난해한 native/assembly, crash 원인, 난독화·프로토콜, 충돌 가설 | `gpt-5.6-sol` / `high` | Terra가 증거를 확보하지 못했거나 깊은 의미 복원이 핵심일 때 |
+| Sol 이후의 다중 subsystem·architecture 수준 난제 | `gpt-6-astra` / `high` | 예외적 fallback 전용 |
+
+root Terra는 작업 성격에 맞춰 시작점을 고르고, bounded discovery만
+병렬 child로 보냅니다. Luna에는 전체 대화 이력을 전달하지 않고 대상 경로,
+검색 패턴, 결과 형식만 전달합니다. Native Multi-Agent V2의 현재 runtime은
+역할 이름만으로 child 모델을 전환하지 않고 parent 설정을 상속하므로, root는
+child spawn 때 반드시 `model`과 `reasoning_effort`를 명시합니다. 이 동작은
+프로젝트에서 Luna/low child의 runtime metadata로 검증했습니다.
+
+평소 실행 방법은 변하지 않습니다.
+
+```powershell
+.\scripts\codex-ctf.ps1
+```
+
+`scripts\codex-ctf.ps1`는 기존 plugin pruning을 적용하고 프로젝트 로컬
+모델 설정을 그대로 로드합니다. 따라서 사용자가 `-m`이나 reasoning 옵션을
+매번 지정할 필요가 없습니다.
 
 다른 명령에 인수를 전달할 수도 있습니다.
 

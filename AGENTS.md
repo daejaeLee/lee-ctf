@@ -43,6 +43,19 @@ without explicit authorization.
   on-demand source-audit, parsing, or EVM-hashing guidance, read
   `shared/ctf-ecc-on-demand.md`; do not load it by default.
 
+## Model orchestration
+
+- Terra/medium coordinates normal work. Delegate independent bounded
+  inventory or search to Luna/low, with `fork_turns="none"` and only the
+  target path, patterns, and required result format.
+- Use Terra/medium or high for analysis, PoCs, solvers, and edits. Escalate
+  assembly/native reasoning, conflicting hypotheses, or two stalled attempts
+  to Sol/high. Use Astra/high only after Sol lacks decisive evidence.
+- When spawning a child, explicitly pass its `model` and `reasoning_effort`;
+  role names alone inherit the parent model in the current runtime. Do not
+  delegate work that is cheaper to perform directly. Return implementation and
+  repetitive changes to Terra or Luna after deep analysis.
+
 ## Evidence and safety
 
 - Search with `rg` first; prefer deterministic scripts, timeouts, and

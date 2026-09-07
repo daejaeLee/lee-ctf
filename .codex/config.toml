@@ -4,6 +4,34 @@ approval_policy = "never"
 #sandbox_mode = "workspace-write"
 sandbox_mode = "danger-full-access"
 
+# Project-local CTF coordinator. Child routing is governed by the concise
+# orchestration policy in AGENTS.md; no global Codex settings are changed.
+model = "gpt-5.6-terra"
+model_reasoning_effort = "medium"
+
+[features]
+multi_agent_v2 = true
+
+[agents.luna]
+description = "Bounded CTF discovery: inventory, search, classification, and deterministic transformations. Report concise findings; do not make final exploitability judgments."
+model = "gpt-5.6-luna"
+model_reasoning_effort = "low"
+
+[agents.terra]
+description = "Normal CTF analysis and implementation: source and data-flow analysis, PoCs, solvers, debugging, and focused code changes."
+model = "gpt-5.6-terra"
+model_reasoning_effort = "medium"
+
+[agents.sol]
+description = "Deep CTF analysis: native crashes, assembly, decompiler recovery, obfuscated logic, protocols, and conflicting hypotheses."
+model = "gpt-5.6-sol"
+model_reasoning_effort = "high"
+
+[agents.astra]
+description = "Exceptional fallback after Sol has insufficient evidence for a multi-subsystem or architecture-level problem."
+model = "gpt-6-astra"
+model_reasoning_effort = "high"
+
 [sandbox_workspace_write]
 writable_roots = []
 network_access = false
