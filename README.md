@@ -245,6 +245,16 @@ child spawn 때 반드시 `model`과 `reasoning_effort`를 명시합니다. 이 
 모델 설정을 그대로 로드합니다. 따라서 사용자가 `-m`이나 reasoning 옵션을
 매번 지정할 필요가 없습니다.
 
+동일한 plugin override는 프로젝트 로컬 `.codex/config.toml`에도 있습니다.
+따라서 이 저장소에서 시작한 새 세션은 아래처럼 `codex`를 직접 실행해도
+ECC와 비CTF productivity 플러그인을 model-visible skills에서 제외합니다.
+전역 `%USERPROFILE%\.codex`의 설치·활성화 상태에는 영향을 주지 않습니다.
+
+```powershell
+Set-Location C:\lee-ctf
+codex
+```
+
 다른 명령에 인수를 전달할 수도 있습니다.
 
 ```powershell
