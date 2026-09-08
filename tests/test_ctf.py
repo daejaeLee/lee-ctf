@@ -179,6 +179,16 @@ class WorkspaceCliTests(unittest.TestCase):
         self.assertEqual(metadata["source_url"], create.source_url)
         self.assertEqual(metadata["target"]["url"], create.target_url)
 
+    def test_ai_ml_llm_subtype_routes_to_dedicated_skill(self) -> None:
+        config = ctf.read_json(ctf.CTF_CONFIG)
+        config["subtypes"] = {"ai-ml": {"llm": "ctf-llm"}}
+        ctf.write_json(ctf.CTF_CONFIG, config)
+        create = argparse.Namespace(event="LLM", category="ai-ml", subtype="llm", name="mock", source_url=None, target_url=None, url=None, host=None, port=None, flag_regex=r"FLAG\{[^}]+\}")
+        self.assertEqual(ctf.cmd_new(create), 0)
+        metadata = ctf.read_json(self.root / "c" / "llm" / "ai-ml" / "mock" / "challenge.json")
+        self.assertEqual(metadata["subtype"], "llm")
+        self.assertEqual(metadata["skill"], "ctf-llm")
+
     def test_verify_proof_gates_flag_recording(self) -> None:
         create = argparse.Namespace(
             event="Proof 2026",

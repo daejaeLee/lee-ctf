@@ -143,6 +143,21 @@ def category_map() -> dict[str, str]:
     return normalized
 
 
+def subtype_skill(category: str, value: str | None) -> tuple[str, str | None]:
+    """Return the primary skill and validated optional subtype for a category."""
+
+    if value is None:
+        return category_map()[category], None
+    subtype = value.strip().lower()
+    if not subtype:
+        raise ValueError("subtype cannot be empty")
+    raw_subtypes = project_config().get("subtypes", {})
+    options = raw_subtypes.get(category, {}) if isinstance(raw_subtypes, dict) else {}
+    if not isinstance(options, dict) or subtype not in options or not isinstance(options[subtype], str):
+        raise ValueError(f"unknown subtype {value!r} for category {category!r}")
+    return options[subtype], subtype
+
+
 def slugify(value: str) -> str:
     value = unicodedata.normalize("NFKC", value).strip().lower()
     value = re.sub(r'[<>:"/\\|?*\x00-\x1f]', "-", value)
@@ -209,13 +224,13 @@ def render_template(source: Path, destination: Path, values: dict[str, str]) -> 
 
 def cmd_new(args: argparse.Namespace) -> int:
     category = normalize_category(args.category)
+    skill, subtype = subtype_skill(category, getattr(args, "subtype", None))
     event_slug = slugify(args.event)
     challenge_slug = slugify(args.name)
     destination = CHALLENGE_ROOT / event_slug / category / challenge_slug
     if destination.exists():
         raise ValueError(f"destination already exists: {destination}")
 
-    skill = category_map()[category]
     port = args.port if args.port is not None else None
     legacy_url = getattr(args, "url", None)
     source_url = getattr(args, "source_url", None)
@@ -242,6 +257,7 @@ def cmd_new(args: argparse.Namespace) -> int:
         "name": args.name,
         "slug": challenge_slug,
         "category": category,
+        "subtype": subtype,
         "skill": skill,
         "source_url": source_url or "",
         "target": {"url": target_url or "", "host": args.host or "", "port": port},
@@ -254,7 +270,7 @@ def cmd_new(args: argparse.Namespace) -> int:
     values = {
         "CHALLENGE_NAME": args.name,
         "EVENT": args.event,
-        "CATEGORY": category,
+        "CATEGORY": f"{category}/{subtype}" if subtype else category,
         "SKILL": skill,
         "SOURCE_URL": source_url or "(not provided)",
         "TARGET": target,
@@ -1632,7 +1648,11 @@ def cmd_doctor(args: argparse.Namespace) -> int:
     try:
         config = project_config()
         config_categories = category_map()
-        config_valid = config.get("challenge_root") == CHALLENGE_ROOT.name and set(config_categories.values()) <= set(skills)
+        raw_subtypes = config.get("subtypes", {})
+        subtype_values = []
+        if isinstance(raw_subtypes, dict):
+            subtype_values = [value for options in raw_subtypes.values() if isinstance(options, dict) for value in options.values()]
+        config_valid = config.get("challenge_root") == CHALLENGE_ROOT.name and set(config_categories.values()).union(subtype_values) <= set(skills)
         config_detail = f"{len(config_categories)} categories; root={config.get('challenge_root')!r}"
         emit("PASS" if config_valid else "FAIL", "project-config", config_detail)
     except (OSError, ValueError, json.JSONDecodeError) as exc:
@@ -1749,6 +1769,7 @@ def build_parser() -> argparse.ArgumentParser:
     new = subparsers.add_parser("new", help="create a challenge from the standard template")
     new.add_argument("--event", default=str(config.get("default_event", "practice")))
     new.add_argument("--category", required=True)
+    new.add_argument("--subtype", help="optional category subtype, for example ai-ml/llm")
     new.add_argument("--name", required=True)
     new.add_argument("--source-url", help="challenge page or download source")
     new.add_argument("--target-url", help="authorized HTTP service target")

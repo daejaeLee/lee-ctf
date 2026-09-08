@@ -33,7 +33,7 @@ brew install python@3
 
 - [model-attacks.md](model-attacks.md) - Model weight perturbation negation, model inversion via gradient descent, neural network encoder collision, LoRA adapter weight merging, model extraction via query API, membership inference attack
 - [adversarial-ml.md](adversarial-ml.md) - Adversarial example generation (FGSM, PGD, C&W), adversarial patch generation, evasion attacks on ML classifiers, data poisoning, backdoor detection in neural networks
-- [llm-attacks.md](llm-attacks.md) - Prompt injection (direct/indirect), LLM jailbreaking, token smuggling, context window manipulation, tool use exploitation
+- [llm-attacks.md](llm-attacks.md) - Legacy broad LLM notes retained for upstream compatibility; for chatbot, RAG, tool-agent, MCP, guardrail, and oracle CTF workflows use `ctf-llm`
 
 ---
 

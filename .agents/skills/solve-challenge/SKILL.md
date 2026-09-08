@@ -91,6 +91,7 @@ Determine the primary category, then invoke the matching skill.
 - "find", "locate", "identify", "who", "where" -> osint
 - "obfuscated", "packed", "C2", "malware", "beacon" -> malware
 - "jail", "sandbox", "escape", "encoding", "signal", "game", "Nim", "commitment", "Gray code" -> misc
+- "chatbot", "system prompt", "guardrail", "jailbreak", "RAG", "retrieval", "embedding", "vector", "function calling", "tool_choice", "MCP", "moderation", "LLM judge" -> LLM (require multiple signals or source/service context; `model` or `prompt` alone is insufficient)
 
 **By service behavior:**
 - Port with interactive prompt, crash on long input -> pwn
@@ -112,6 +113,7 @@ Once you identify the category, **invoke the matching skill** to get specialized
 | OSINT | `/ctf-osint` | Social media, geolocation, DNS, public records |
 | Malware | `/ctf-malware` | Obfuscated scripts, C2 traffic, PE/.NET analysis |
 | Misc | `/ctf-misc` | Jails, encodings, RF/SDR, esoteric languages, constraint solving |
+| LLM | `/ctf-llm` | Chatbots, prompt/secret extraction, guards, RAG, tool/MCP agents, multi-turn oracles |
 
 You can also invoke `/ctf-<category>` to load the full skill instructions with detailed techniques.
 
@@ -138,6 +140,7 @@ If your first approach doesn't work:
 - Crypto + Geometry + Lattice: multi-layer challenges progressing from spatial reconstruction → subspace recovery → LWE solving → AES-GCM decryption
 - Forensics + Signal Processing: power traces / side-channel analysis requiring statistical analysis of measurement data
 - Forensics + Network + Encoding: timing-based encoding in PCAP (inter-packet intervals encode binary data)
+- Web + LLM: a web application whose chatbot, RAG, or tool agent is the decisive attack surface
 
 ### Step 5: Generate Write-up
 

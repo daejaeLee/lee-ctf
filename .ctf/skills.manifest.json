@@ -1,14 +1,14 @@
 {
   "schema_version": 1,
-  "source_commit": "36c72e53a96a035791821caff7440882ea0f5c57",
+  "source_commit": "39bc38a9d0388caa2ef4b17e40fb68f05ee3728e",
   "algorithm": "sha256 over sorted UTF-8 path, NUL, lowercase file sha256, LF",
-  "file_count": 118,
-  "tree_sha256": "2945cc4c1c120c9c2aa1f49085b23c59cfae90e578462d3683e7248a043feb13",
+  "file_count": 131,
+  "tree_sha256": "83447e572c0685e97212025c6b0297f2ddf47294f7f4d1e3ce6581123aabdbdf",
   "files": {
     "ctf-ai-ml/adversarial-ml.md": "f40e626221fcfc5461968f7e1c25180bf830b0ea8c71c5834eb0a10f8554aa2c",
     "ctf-ai-ml/llm-attacks.md": "8338d986970f4d5d928f957cf52cba309a1a39cab971314c0d8c76bd31cca3f6",
     "ctf-ai-ml/model-attacks.md": "f7393fd2397d515ff5a41f0f2c604d4572cffcc3392bb706f749b6e811eadebf",
-    "ctf-ai-ml/SKILL.md": "83fc0f06fa4fa146a40b95eab82e95100f8341f33e9c77eeda003dd6d5b700e8",
+    "ctf-ai-ml/SKILL.md": "760778c4c4e0a6364b71974ccc0ac91f8b59d59abe2bd64c8ae2f606fc0a2286",
     "ctf-crypto/advanced-math.md": "2bfe59c99c102eb424ad2e1dc3e4718b900d0abbc2595b294eb7d246fa89cc05",
     "ctf-crypto/classic-ciphers.md": "9942b88579c0e78e4c3d94d761e477cb97aac9bb76b61dd9e3cf770fa0b9bc95",
     "ctf-crypto/ecc-attacks.md": "616da05046e5b348211e6cdc9553fa5a0c509a2ed4f34e22dd7505b5c0e1878c",
@@ -41,6 +41,19 @@
     "ctf-forensics/stego-advanced.md": "4ca43f439d9acb71f607535e1e91fd411384adf5153f87d76cf440e4a545f794",
     "ctf-forensics/stego-image.md": "8b12770c2be57443e854345d55e47663fee8de70f5ded751759414a107c30f49",
     "ctf-forensics/windows.md": "c23e7de4e511aa106059e6e00019ff4f264e1893a78839613ab477fc3cee2ace",
+    "ctf-llm/references/attack-selection.md": "9812100e3d56cd2f76f245c517521752fe6d8a0263004055abccfb0f85307b0f",
+    "ctf-llm/references/automation-tools.md": "bda702a840419c9733a5c91548223f9bd92f278fc06e461bee6b0189a6a08369",
+    "ctf-llm/references/casebook.md": "e4affb62a3421a3b94aa1731e66a28436bb3600566b09426cf5d5d8ad6ad1afb",
+    "ctf-llm/references/rag-and-agents.md": "4a2f2e01857060c1d27bc69686be5ba9d5551d6cc09f80b0ce97ce4277c09cf9",
+    "ctf-llm/references/references.md": "402e835d33ff0acd5612e91ac2f7483bf82cfb6c9d5eb7bee198b40ce447b90d",
+    "ctf-llm/references/source-assisted-analysis.md": "885cafbe9dfc214bb3392060f64ea25061744b83232ae9a064d21f3189784809",
+    "ctf-llm/scripts/campaign.py": "203c4f78bae40a9e51e2d6d7a9707aaad82255dea68811f8ad4518c1f8043bf2",
+    "ctf-llm/scripts/extract_candidate.py": "19ecc9448659fbc167bcfefdd8998baddfef0982ed6436b23b0278914d6b4a97",
+    "ctf-llm/scripts/llm_probe.py": "03f4453a949499dd25bf3a36c98d0908a4379bead73547db29104c58f83b57e0",
+    "ctf-llm/scripts/mock_target.py": "0c96e1a4a2aefcdaf277d2a25a86e9db3c11d12cce770d83bb4466e3b29a5bc6",
+    "ctf-llm/scripts/mutate_prompt.py": "3daaa60bacb6f80991bdded1d6a7b7f3f91bc21d6d7f38afcd8dc5affb1adfc9",
+    "ctf-llm/scripts/response_diff.py": "797bed07bc405c3e80f077e5491da88f53a79904ce3a05495bb2f0054a223c7c",
+    "ctf-llm/SKILL.md": "f759092940cb26533b5f171c2a939842c245ecc17e15d45e81b2abab86e7a57d",
     "ctf-malware/c2-and-protocols.md": "73a5d74a76fbca0bfa8807cfbe18d859ddbad0d3bbdf1203439f06c44869e846",
     "ctf-malware/pe-and-dotnet.md": "6f6f17a5ec07c57c82e0919998261c15229051401594602b39c6ae47a349e6b4",
     "ctf-malware/scripts-and-obfuscation.md": "d70cad7d3a5c0b41daff407b131a309235323526f5ff74afe5e640a8e8c9a434",
@@ -122,6 +135,6 @@
     "ctf-web/sql-injection.md": "7c9857aa0e2bcf21f765f4314821b1cc5e1c51cbe816c168b9741608eb1e7ae2",
     "ctf-web/web3.md": "feb9fd8a498a14c413a7673c7d9dad8c690866096053f28d5a6b7315f9b9a0dd",
     "ctf-writeup/SKILL.md": "e3f43f41e3b44dcacdbdd18f42c1fb7049788cafb351a2c3edd2e598703b9a42",
-    "solve-challenge/SKILL.md": "3001bc2e33eced5f1a9b2886d9898b349162ad6b8b5c7f40f249d3493c22046c"
+    "solve-challenge/SKILL.md": "f0961da95399794bba8fb343e075e13f41b459fbfa0fd5c9bdae1b1d22fdee64"
   }
 }

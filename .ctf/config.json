@@ -14,5 +14,10 @@
     "pwn": "ctf-pwn",
     "reverse": "ctf-reverse",
     "web": "ctf-web"
+  },
+  "subtypes": {
+    "ai-ml": {
+      "llm": "ctf-llm"
+    }
   }
 }
