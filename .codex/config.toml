@@ -12,6 +12,12 @@ model_reasoning_effort = "medium"
 [features]
 multi_agent_v2 = true
 
+# Keep skills installed and available for explicit/on-demand use, but do not
+# inject every SKILL.md description into the first model turn. AGENTS.md is
+# the CTF category router for this repository.
+[skills]
+include_instructions = false
+
 [agents.luna]
 description = "Bounded CTF discovery: inventory, search, classification, and deterministic transformations. Report concise findings; do not make final exploitability judgments."
 model = "gpt-5.6-luna"
@@ -35,6 +41,15 @@ model_reasoning_effort = "high"
 # Project-local plugin pruning. These overrides apply whenever Codex starts
 # from this repository, including a plain `codex` invocation. They do not
 # modify global plugin installation or enablement state.
+[plugins."claude-mem@claude-mem-local"]
+enabled = true
+
+# `daejaeLee/claude-mem` currently publishes the marketplace name
+# `thedotmack`. Keep the installed local alias above for existing machines and
+# this alias for a clean setup; an absent plugin entry is harmless.
+[plugins."claude-mem@thedotmack"]
+enabled = true
+
 [plugins."ecc@ecc"]
 enabled = false
 

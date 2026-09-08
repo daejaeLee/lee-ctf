@@ -56,6 +56,18 @@ without explicit authorization.
   delegate work that is cheaper to perform directly. Return implementation and
   repetitive changes to Terra or Luna after deep analysis.
 
+## Memory
+
+- `notes.md`, `evidence/`, current artifacts, and reproducible solver output
+  are authoritative for the active challenge. Use claude-mem only for
+  cross-session recall and related previous work.
+- On resumed work, search memory when prior work is likely relevant or the
+  current state is unclear; verify every remembered conclusion against current
+  artifacts. Never treat memory as evidence.
+- Keep decisive facts, validated hypotheses, and important dead ends in
+  `notes.md`. Do not duplicate the entire active challenge state into memory
+  files.
+
 ## Evidence and safety
 
 - Search with `rg` first; prefer deterministic scripts, timeouts, and

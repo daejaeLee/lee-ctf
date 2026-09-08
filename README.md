@@ -1,289 +1,245 @@
 # lee-ctf
 
-승인된 CTF와 보안 연구를 위한 재현 가능한 Codex 작업 공간입니다. 원본
-아티팩트는 보존하고, 실험·증거·최종 솔버를 분리하며, 라이브 플래그와
-자격 증명은 Git에 저장하지 않습니다.
+Windows와 Kali WSL에서 승인된 CTF·모의해킹·보안 연구를 재현 가능하게 수행하기 위한 Codex 작업 공간입니다. 원본 입력, 조사 작업, 증거, 재현 가능한 solver를 분리하고, Codex는 CTF 전용 skill과 짧은 프로젝트 지침을 사용합니다.
 
 ## 빠른 시작
 
 ```powershell
-# 프로젝트 및 Kali 도구 상태 확인
+git clone https://github.com/daejaeLee/lee-ctf.git
+Set-Location .\lee-ctf
+
 .\ctf.ps1 doctor --project-only
+python .\scripts\check_skill_snapshot.py
+.\scripts\codex-ctf.ps1
+```
+
+일반 `codex` 실행도 이 저장소 안에서는 `.codex/config.toml`을 읽어 같은 skill-context 및 plugin 정책을 적용합니다. wrapper는 이전 실행 방식과 호환되는 편의 진입점입니다.
+
+## Architecture
+
+```text
+AGENTS.md ──> category router ──> ctf-* skill ──> challenge work
+     │                                      │
+     │                                      ├─ notes.md / evidence/ / solve/ / artifacts
+     │                                      │             (authoritative state)
+     │                                      └─ Terra / Luna / Sol model routing
+     │
+claude-mem ──> cross-session recall only ──> current artifact verification
+
+ECC plugin ──> disabled for this project
+              shared/ctf-ecc-on-demand.md (read only when relevant)
+```
+
+`AGENTS.md`는 challenge category를 분류하고 적절한 `ctf-*` skill을 고르는 router입니다. `notes.md`, `evidence/`, `solve/`, `input/`, `output/`, 실제 source/binary/artifact가 active challenge의 권위 있는 상태입니다. claude-mem은 과거 작업을 다시 찾는 보조 계층이며 기억한 결론은 반드시 현재 artifact로 검증합니다.
+
+## 디렉터리 구조
+
+```text
+.agents/skills/  vendored CTF skills (직접 수정 금지)
+.codex/          프로젝트 전용 Codex 설정
+.ctf/            category-to-skill routing 및 workspace metadata
+c/               c/<event>/<category>/<slug> challenge directories
+shared/          on-demand guidance와 재사용 helper
+scripts/         PowerShell/WSL 설치·검증·Codex wrapper
+templates/       새 challenge 템플릿
+docs/examples/   사용자 전역 설정에 복사할 안전한 예제
+ctf.ps1          PowerShell 5.1 호환 프로젝트 CLI
+```
+
+각 challenge는 `challenge.json`, local `AGENTS.md`, `README.md`, immutable `input/`, disposable `work/`, reproducible `solve/`, generated `output/`, selected `evidence/`, `notes.md`, redacted `writeup.md`를 사용합니다. `input/`은 수정하지 않고, live flag와 credential은 `.local/`에만 둡니다.
+
+## 요구 사항
+
+| 구성 요소 | 용도 | 확인 명령 |
+| --- | --- | --- |
+| Git for Windows | clone, history | `git --version` |
+| PowerShell 5.1+ | host scripts | `$PSVersionTable.PSVersion` |
+| Python 3.10+ | project checks and helpers | `python --version` |
+| Node.js 20.12+ | Codex 및 claude-mem runtime | `node --version` |
+| Codex CLI | coding agent | `codex --version` |
+| WSL + Kali (`kali-linux`) | pwn/reverse/forensics/malware tools | `wsl.exe --list --verbose` |
+| Bun 1.0+ | claude-mem bundled runner | `bun --version` |
+| uv (선택) | 일부 Python workflow | `uv --version` |
+
+현재 claude-mem 13.24.1 manifest는 Node `>=20.12.0`, Bun `>=1.0.0`을 선언합니다. `uv`는 plugin 설치 자체의 필수 항목이 아니며 challenge 또는 별도 Python 작업에서만 필요할 수 있습니다.
+
+Kali 준비와 검증:
+
+```powershell
+.\scripts\Install-CtfWsl.ps1 -Distribution kali-linux
 .\ctf.ps1 doctor --wsl-tools
+```
 
-# 프로젝트 스킬 무결성 검사
-python scripts\check_skill_snapshot.py
+알 수 없는 malware sample은 Windows host에서 실행하지 말고 격리된 Kali/VM에서만 다룹니다.
 
-# 새 challenge 생성, 원본 가져오기, triage, 재현 검증
+## Codex CLI setup
+
+`.codex/config.toml`은 이 repository에서만 다음을 적용합니다.
+
+- root coordinator: `gpt-5.6-terra` / `medium`
+- Multi-Agent V2: enabled
+- Luna/low: bounded inventory, `rg`, endpoint/symbol/dependency 목록화
+- Terra/medium~high: 일반 분석, PoC, solver, debugging, 편집
+- Sol/high: assembly, native crash, obfuscation, 복잡한 chain
+- Astra/high: Sol이 결정적 증거를 만들지 못했을 때만 예외적으로 사용
+- claude-mem: enabled
+- ECC, documents, PDF, spreadsheets, presentations 등 비-CTF plugin: project-local disabled
+
+skill routing은 **무엇을 할지**를, model routing은 **어느 수준의 모델이 할지**를 결정합니다. child를 만들 때 role 이름만 쓰지 말고 `model`과 `reasoning_effort`를 명시합니다. search/inventory child는 `fork_turns="none"`과 최소 task context를 사용합니다.
+
+Codex가 project trust 또는 hook trust를 물으면 먼저 repository 및 plugin source를 검토합니다. claude-mem hook은 설치한 plugin 경로와 command가 예상과 일치할 때에만 trust합니다.
+
+## Context optimization
+
+`Exceeded skills context budget` 경고는 설치·활성화된 많은 plugin 및 skill의 설명이 initial model context 한도를 초과할 때 나타납니다. 이 저장소는 CTF skill을 삭제하지 않습니다. Codex 0.153.4 strict config으로 검증한 다음 설정을 사용합니다.
+
+```toml
+[skills]
+include_instructions = false
+```
+
+이는 skill을 비활성화하지 않습니다. 첫 turn에 전체 `SKILL.md` description catalog를 넣지 않을 뿐이며, `AGENTS.md` routing 또는 명시적 요청으로 필요한 skill은 on-demand로 계속 사용합니다. 현재 구성의 `codex debug prompt-input` 비교는 29,332자에서 14,596자로 감소했고 CTF 및 claude-mem skill description이 initial prompt에서 제거됨을 확인했습니다.
+
+## CTF skills
+
+`.agents/skills/`는 vendored snapshot입니다. 삭제·직접 편집하지 않습니다.
+
+| Skill | 목적 |
+| --- | --- |
+| `solve-challenge` | category가 불명확한 bundle의 first-pass triage |
+| `ctf-web` | HTTP/API/client/template/auth 취약점 |
+| `ctf-pwn` | native exploit, ROP, heap/stack/format string |
+| `ctf-reverse` | binary/APK/WASM/firmware/obfuscation 분석 |
+| `ctf-crypto` | RSA, ECC, cipher, PRNG, number theory |
+| `ctf-forensics` | disk, memory, PCAP, logs, stego, metadata |
+| `ctf-malware` | malicious behavior, C2, PE/.NET, config extraction |
+| `ctf-ai-ml` | LLM/ML attack 및 AI puzzle |
+| `ctf-osint` | 의도된 public-source discovery |
+| `ctf-misc` | jail, encoding, RF/SDR, hybrid puzzle |
+| `ctf-writeup` | 재현 검증 후 redacted handoff |
+
+Native target의 동작이 불명확하면 `ctf-reverse`로 시작하고 exploit primitive가 확인된 뒤 `ctf-pwn`으로 전환합니다. `.ctf/config.json`의 category mapping이 이 경로를 유지합니다.
+
+## claude-mem installation and configuration
+
+프로젝트에서는 `claude-mem@claude-mem-local`을 cross-session recall, 이전 조사·결정 회상, 관련 codebase history 검색, observation/summary에 사용합니다. 다음은 authoritative data가 아닙니다: flag, offset, address, credential, endpoint, exploit result, binary state, HTTP response, artifact hash, PoC correctness. 이들은 현재 `notes.md`, `evidence/`, `solve/`, `input/`, `output/`, source/binary/artifact로 확인합니다.
+
+이 환경에서는 `daejaeLee/claude-mem` fork를 우선 사용합니다. Codex 0.153.4에서 확인한 marketplace 문법은 다음과 같습니다.
+
+```powershell
+codex plugin marketplace add daejaeLee/claude-mem --ref main
+codex plugin marketplace list --json
+codex plugin add claude-mem@thedotmack
+codex plugin list --json
+```
+
+fork의 현재 marketplace metadata name은 `thedotmack`이므로 위 plugin selector를 사용합니다. 설치 후 `Hooks need review`가 나타나면 `Review hooks`에서 `claude-mem` plugin 경로와 command를 확인하고, 의도한 fork와 일치할 때에만 `Trust all and continue`를 선택합니다. 모르는 plugin 또는 예상과 다른 command는 trust하지 않습니다.
+
+plugin cache에서 수동으로 `npm install`, `bun install`, dependency 파일을 수정하지 마십시오. `node --version`, `bun --version`, `codex plugin list --json`으로 먼저 runtime과 설치 상태를 확인합니다.
+
+### 권장 memory context 크기
+
+claude-mem 13.24.1의 기본 observation 수는 50입니다. CTF에서는 recent memory가 context를 과도하게 쓰지 않도록 [example](docs/examples/claude-mem-settings.json)을 제공합니다.
+
+```powershell
+$target = Join-Path $env:USERPROFILE '.claude-mem\settings.json'
+New-Item -ItemType Directory -Force (Split-Path $target) | Out-Null
+Copy-Item .\docs\examples\claude-mem-settings.json $target
+```
+
+기존 `settings.json`에 provider, API key, data directory 등 개인 설정이 있으면 위 복사를 사용하지 말고 example의 9개 key만 기존 JSON에 병합합니다. repository는 사용자 전역 설정을 자동으로 overwrite하지 않습니다.
+
+## ECC
+
+ECC는 전역 Codex에서 계속 설치·사용할 수 있습니다. 이 repository의 `.codex/config.toml`과 `scripts/codex-ctf.ps1`은 `ecc@ecc`를 CTF session에서 disabled로 유지합니다. ECC 전체 catalog는 CTF 기본 context에 필요하지 않고 skill budget을 크게 소비하기 때문입니다.
+
+source-audit, parser, Python solver quality, EVM Keccak 등 CTF에 유용한 원칙은 [shared/ctf-ecc-on-demand.md](shared/ctf-ecc-on-demand.md)에 짧게 선별되어 있습니다. 필요한 경우에만 이 파일을 읽습니다.
+
+## Challenge workflow
+
+```powershell
 .\ctf.ps1 new --event example-2026 --category web --name baby-sqli
-.\ctf.ps1 import c\example-2026\web\baby-sqli C:\Downloads\challenge.zip
+.\ctf.ps1 import c\example-2026\web\baby-sqli C:\path\to\challenge.zip
 .\ctf.ps1 verify-input c\example-2026\web\baby-sqli
 .\ctf.ps1 triage c\example-2026\web\baby-sqli
 .\ctf.ps1 verify c\example-2026\web\baby-sqli --record
 ```
 
-CTF 전용 Codex 세션은 다음처럼 실행합니다. 이 래퍼는 해당 실행에만
-ECC와 문서·프레젠테이션·스프레드시트 등 비CTF 플러그인을 끄며, 전역
-Codex 설정이나 설치된 플러그인은 변경하지 않습니다.
+권장 순서는 input 저장 → Codex CTF session → category 판별 → 적절한 `ctf-*` skill → `notes.md` 갱신 → `evidence/` 선택 → `solve/` solver → reproduction → redacted write-up → session summary입니다.
+
+## New machine setup
 
 ```powershell
+# 1. Git, PowerShell, Node.js 20.12+, Codex CLI, WSL/Kali를 먼저 설치한다.
+git --version
+node --version
+codex --version
+wsl.exe --list --verbose
+
+# 2. repository clone 및 project validation
+git clone https://github.com/daejaeLee/lee-ctf.git
+Set-Location .\lee-ctf
+.\ctf.ps1 doctor --project-only
+python .\scripts\check_skill_snapshot.py
+
+# 3. claude-mem fork marketplace와 plugin 설치
+codex plugin marketplace add daejaeLee/claude-mem --ref main
+codex plugin add claude-mem@thedotmack
+codex plugin list --json
+
+# 4. 새 settings file일 때만 example을 그대로 복사한다.
+$settings = Join-Path $env:USERPROFILE '.claude-mem\settings.json'
+if (-not (Test-Path $settings)) {
+  New-Item -ItemType Directory -Force (Split-Path $settings) | Out-Null
+  Copy-Item .\docs\examples\claude-mem-settings.json $settings
+}
+
+# 5. hook을 검토·신뢰한 뒤 CTF session 시작
 .\scripts\codex-ctf.ps1
 ```
 
-## 작업 구조
+기존 settings file이 있으면 provider credential을 보존하도록 example key만 병합합니다. hook trust 전에는 plugin source와 command를 검토합니다.
 
-```text
-.agents/skills/  프로젝트 CTF 스킬(벤더 파일: 직접 수정 금지)
-.ctf/            스킬 및 워크스페이스 메타데이터
-c/               Challenge: c/<event>/<category>/<slug>
-shared/          재사용 가능한 helper, payload, 온디맨드 참고 자료
-scripts/         검증, 설치, PowerShell/WSL 자동화
-templates/       새 challenge에 복사되는 템플릿
-ctf.ps1          PowerShell 5.1 호환 진입점
-```
+## Verification and troubleshooting
 
-각 challenge는 아래 구조를 사용합니다.
-
-```text
-challenge.json   기계 판독 메타데이터와 승인된 target 범위
-AGENTS.md        challenge-local 규칙
-README.md        문제 설명과 빠른 명령
-input/           원본 입력(불변)
-work/            폐기 가능한 실험
-solve/            최종 재현 솔버/익스플로잇
-output/           생성 출력
-evidence/         추린 증거
-notes.md          확인된 사실, 가설, 실패 경로
-writeup.md        플래그를 가린 최종 handoff
-```
-
-## CTF 스킬 라우팅
-
-| 분야 | 스킬 |
+| 증상 | 확인 및 조치 |
 | --- | --- |
-| AI / ML | `ctf-ai-ml` |
-| Crypto | `ctf-crypto` |
-| Forensics | `ctf-forensics` |
-| Malware | `ctf-malware` |
-| Misc / jail | `ctf-misc` |
-| OSINT | `ctf-osint` |
-| Pwn | `ctf-pwn` |
-| Reverse | `ctf-reverse` |
-| Web | `ctf-web` |
-
-분류가 불명확하면 `solve-challenge`를 사용합니다. native 바이너리의
-동작이 아직 불명확하면 먼저 `ctf-reverse`를 사용하고, 취약점 원시값이
-확인된 뒤에 `ctf-pwn`으로 전환합니다.
-
-### 프로젝트에 적용된 스킬 명세
-
-아래 스킬은 이 저장소의 [`.agents/skills/`](.agents/skills/)에 포함되어
-있고, `AGENTS.md` 및 `.ctf/config.json`의 라우팅 대상입니다. 각 스킬은
-challenge의 `AGENTS.md` 지침보다 우선하지 않으며, 해당 문제를 분석할 때만
-선택적으로 읽습니다.
-
-| 스킬 | 적용 범위 | 주요 역할 |
-| --- | --- | --- |
-| `solve-challenge` | 분류 전 / 복합 문제 | 입력 보존, 빠른 triage, 분야 분기, 재현 가능한 handoff |
-| `ctf-ai-ml` | AI·LLM·ML | 프롬프트 인젝션, 모델 공격, 데이터·추론 분석 |
-| `ctf-crypto` | Crypto | 인코딩, 고전·현대 암호, 수론, RSA/ECC, PRNG 분석 |
-| `ctf-forensics` | Forensics | 파일·디스크·메모리·로그·PCAP·메타데이터·스테가노그래피 |
-| `ctf-malware` | Malware | 악성 행위, C2/config 추출, 언패킹, 난독화·안티분석 |
-| `ctf-misc` | Misc / jail | Python·Bash·eval·AST·제한된 builtins 및 언어 레벨 jail |
-| `ctf-osint` | OSINT | 공개 출처 기반 인물·좌표·식별자·웹/DNS 조사 |
-| `ctf-pwn` | Pwn | BOF, heap/stack, ROP, format string, shellcode, seccomp·native escape |
-| `ctf-reverse` | Reverse | ELF/PE/APK·디컴파일·어셈블리·동적 분석·바이너리 동작 파악 |
-| `ctf-web` | Web | HTTP, 인증, XSS, SQLi, SSTI, SSRF, 업로드, API·세션 보안 |
-| `ctf-writeup` | 검증 후 문서화 | 재현 절차와 증거를 정리하되 플래그 원문은 가림 |
-
-라우팅 원칙은 다음과 같습니다.
-
-- 바이너리의 동작 또는 취약점이 불명확하면 `ctf-reverse`부터 사용합니다.
-- 취약점 원시값과 익스플로잇 조건이 확인되면 `ctf-pwn`을 함께 사용합니다.
-- 악성 행위 자체가 핵심이면 `ctf-malware`, 증거 재구성이 핵심이면
-  `ctf-forensics`를 우선합니다.
-- 공개 검색이 의도된 경로일 때만 `ctf-osint`를 사용합니다. 제공된 파일 분석은
-  해당 crypto/forensics/malware/reverse 스킬로 처리합니다.
-- `ctf-writeup`은 플래그 형식·대상·재현성이 검증된 뒤에만 사용합니다.
-
-`shared/ctf-ecc-on-demand.md`에는 소스 취약점 triage, Python 솔버 품질,
-구조화 파싱, EVM Keccak 주의사항 등 선별된 ECC 지침이 있습니다. 필요할
-때만 읽어 스킬 context를 작게 유지합니다.
-
-## 환경 구성
-
-이 저장소는 **Windows 호스트 + Kali WSL + Codex CLI** 조합을 기준으로
-구성되어 있습니다. 호스트에는 오케스트레이션만 두고, Linux 우선 보안 도구는
-Kali 안에 설치해 Windows Python/패키지 환경을 오염시키지 않습니다.
-
-| 구성 요소 | 기준 구성 | 역할 |
-| --- | --- | --- |
-| 호스트 OS | Windows | 파일 관리, Codex 실행, PowerShell 오케스트레이션 |
-| 셸 | Windows PowerShell 5.1 | `ctf.ps1`, 설치·검증 스크립트 실행 |
-| 호스트 Python | Python 3.10 이상 | challenge 생성, 메타데이터 처리, 검증 CLI |
-| Linux 환경 | WSL 배포판 `kali-linux` | pwn, reverse, forensics, malware 및 Linux 전용 도구 |
-| Codex | Codex CLI 0.153.4에서 검증 | 프로젝트 지침·CTF 스킬·브라우저 기반 웹 흐름 |
-| Git | Git for Windows | 재현 가능한 프로젝트 상태와 솔버 관리 |
-
-프로젝트의 실제 기본값은 [`.ctf/config.json`](.ctf/config.json)에 있습니다.
-challenge 루트는 `c/`, 기본 WSL 배포판은 `kali-linux`, 카테고리별 라우팅은
-`ctf-ai-ml`, `ctf-crypto`, `ctf-forensics`, `ctf-malware`, `ctf-misc`,
-`ctf-osint`, `ctf-pwn`, `ctf-reverse`, `ctf-web`입니다.
-
-### 처음 다른 환경에서 준비하기
+| `codex`를 찾을 수 없음 | `Get-Command codex`; Codex CLI PATH 설치 상태 확인 |
+| plugin ID/marketplace mismatch | `codex plugin marketplace list --json`, `codex plugin list --available --json` 후 실제 selector 확인 |
+| hooks not trusted | hook review에서 plugin path와 command를 검토한 뒤 의도한 fork만 trust |
+| claude-mem hook이 동작하지 않음 | `node --version`, `bun --version`, `codex plugin list --json`, `%USERPROFILE%\.claude-mem\logs\` 확인 |
+| Bun 없음 | Bun 1.0+ 설치 후 새 terminal에서 `bun --version`; plugin cache는 수동 편집하지 않음 |
+| skill budget 경고 | project root에서 `codex debug prompt-input test`; `[skills] include_instructions = false`와 ECC disable 확인 |
+| ECC가 CTF session에 보임 | project root에서 `codex plugin list --json`을 실행해 `ecc@ecc`가 `enabled:false`인지 확인 |
+| memory가 너무 큼 | `%USERPROFILE%\.claude-mem\settings.json`의 observation/session/full count를 example 값으로 낮춘 뒤 새 session 시작 |
+| execution policy 오류 | 현재 process에서 `Set-ExecutionPolicy -Scope Process Bypass` 후 script 재시도 |
 
 ```powershell
-# 1) 저장소를 받은 뒤 호스트 요구 사항을 먼저 확인합니다.
-git clone https://github.com/<owner>/lee-ctf.git
-Set-Location .\lee-ctf
+git diff --check
 .\ctf.ps1 doctor --project-only
-
-# 2) WSL에 kali-linux가 없다면 먼저 WSL/Kali를 설치한 뒤 재실행합니다.
-wsl.exe --list --verbose
-
-# 3) Kali에 프로젝트가 고정한 CTF 도구 기준선을 설치합니다.
-.\scripts\Install-CtfWsl.ps1 -Distribution kali-linux
-
-# 4) 설치 결과와 프로젝트 스킬 스냅샷을 검증합니다.
-.\ctf.ps1 doctor --wsl-tools
 python .\scripts\check_skill_snapshot.py
+.\scripts\codex-ctf.ps1 --help
+codex plugin list --json
+codex plugin marketplace list --json
 ```
 
-`Install-CtfWsl.ps1`는 Kali에서 Python 가상환경과 빌드 도구를 준비하고,
-프로젝트가 관리하는 **58개 항목 CTF 도구 기준선**을 검증합니다. `pwntools`나
-SageMath처럼 challenge에 따라 충돌하거나 큰 의존성이 필요한 것은 호스트
-Python에 강제 설치하지 않으며, 필요하면 Kali 또는 challenge-local 환경에서
-추가합니다. Python 호환성 오버레이는
-[`scripts/ctf-python-compat.txt`](scripts/ctf-python-compat.txt)에 고정되어
-있습니다.
-
-Kali 안에서 프로젝트 명령을 실행할 때는 Windows 경로를 직접 변환하지 말고
-래퍼를 사용합니다.
+## Updating
 
 ```powershell
-powershell.exe -NoProfile -ExecutionPolicy Bypass -File .\scripts\Invoke-CtfWsl.ps1 `
-  verify c\example-2026\pwn\example --record
-```
+git pull
+.\ctf.ps1 doctor --project-only
+python .\scripts\check_skill_snapshot.py
 
-### Codex 프로필과 권한 범위
-
-프로젝트 로컬 [`.codex/config.toml`](.codex/config.toml)은 이 저장소에서만
-`approval_policy = "never"`, `sandbox_mode = "danger-full-access"`를 사용합니다.
-이는 CTF 아티팩트 분석·로컬 스크립트 실행을 중단 없이 수행하기 위한 설정이며,
-Codex 전역 설정을 변경하지 않습니다. 신뢰할 수 없는 challenge는 반드시
-격리된 Kali/VM에서 다루고, 알려지지 않은 악성 샘플을 Windows 호스트에서
-실행하지 마세요.
-
-### 전역 플러그인과 프로젝트 CTF 프로필
-
-Codex의 플러그인 설치·활성화 상태는 사용자 전역 디렉터리
-`%USERPROFILE%\.codex\`에 저장됩니다. 이 프로젝트는 전역 설정을 수정하거나
-ECC를 삭제하지 않습니다. 현재 기준으로 전역에는 아래 플러그인이 설치되어 있고
-모두 활성화되어 있습니다.
-
-| 전역 플러그인 그룹 | 상태 | 프로젝트 CTF 세션에서의 처리 |
-| --- | --- | --- |
-| `ecc@ecc` 2.2.1 | 설치·활성화 | 비활성화 — ECC는 다수의 범용 스킬을 한 번에 노출하므로 context 절약을 위해 제외 |
-| documents, pdf, spreadsheets, presentations, template-creator | 설치·활성화 | 비활성화 — 문서·프레젠테이션·스프레드시트 작업은 CTF 우선순위가 낮음 |
-| sites, computer-use, visualize | 설치·활성화 | 비활성화 — 일반 사이트 제작·GUI 조작·시각화 기능 |
-| browser | 설치·활성화 | **유지** — 로그인된 브라우저를 사용하는 웹 CTF 및 플랫폼 흐름에 필요 |
-| codex-app-tools | 설치·활성화 | 유지 — Codex 앱 연동 기반 기능 |
-| plugin-management, openai-templates, deep-research-work | 기본 설치·활성화 | Codex의 `INSTALLED_BY_DEFAULT` 정책으로 세션 오버라이드 대상이 아님 |
-
-ECC는 GitHub의 `affaan-m/ECC` 마켓플레이스에서 설치된 **전역 플러그인**입니다.
-현재 Codex CLI에서는 스킬 하나만 선택적으로 disable하는 기능이 없고, ECC는
-플러그인 단위로만 켜고 끌 수 있습니다. 따라서 CTF 프로필에서는 ECC 전체를
-제외하고, CTF에 유용한 ECC 지침만 프로젝트의
-[온디맨드 가이드](shared/ctf-ecc-on-demand.md)로 옮겨 필요할 때 참고합니다.
-
-전역 상태와 현재 설치 버전은 다음으로 확인할 수 있습니다.
-
-```powershell
+# Codex 0.153.4에는 `codex plugin update`가 없다.
+codex plugin marketplace upgrade thedotmack
 codex plugin list --json
 ```
 
-기본 Codex 실행은 설치된 플러그인을 모두 로드할 수 있습니다. CTF 작업은
-다음 래퍼로 시작합니다.
+marketplace name이 다르면 `codex plugin marketplace list --json`으로 확인한 실제 이름을 사용합니다. update 후 hook source/command가 바뀌었는지 다시 review합니다.
 
-```powershell
-.\scripts\codex-ctf.ps1
-```
+## 안전 및 재현성
 
-이 래퍼는 `-c plugins."<plugin-id>".enabled=false` 인수를 Codex에 전달하는
-방식으로, **현재 Codex 실행에만** 위 표의 비CTF 플러그인을 비활성화합니다.
-프로젝트의 `ctf-*` 스킬과 browser 플러그인은 유지합니다. 세션을 종료하면
-전역 플러그인 상태는 바뀌지 않으므로 별도 원복 명령은 필요 없습니다.
-
-### 적응형 모델 라우팅
-
-프로젝트 로컬 [`.codex/config.toml`](.codex/config.toml)은 root Codex를
-`gpt-5.6-terra` / `medium`으로 시작하고 Multi-Agent V2를 활성화합니다.
-카테고리 스킬은 **무엇을 분석할지**, 모델 라우팅은 **어느 수준의 모델이
-처리할지**를 정합니다. 둘은 서로 대체하지 않습니다.
-
-| 작업 성격 | 모델 / effort | 사용 기준 |
-| --- | --- | --- |
-| 독립적인 inventory, `rg`, 후보 추출, 반복 변환 | `gpt-5.6-luna` / `low` | 짧은 입력·결과 형식이 명확한 탐색 작업 |
-| 일반 분석, data flow, PoC·solver 구현, 디버깅 | `gpt-5.6-terra` / `medium` | 기본 coordinator 및 구현 작업 |
-| 난해한 native/assembly, crash 원인, 난독화·프로토콜, 충돌 가설 | `gpt-5.6-sol` / `high` | Terra가 증거를 확보하지 못했거나 깊은 의미 복원이 핵심일 때 |
-| Sol 이후의 다중 subsystem·architecture 수준 난제 | `gpt-6-astra` / `high` | 예외적 fallback 전용 |
-
-root Terra는 작업 성격에 맞춰 시작점을 고르고, bounded discovery만
-병렬 child로 보냅니다. Luna에는 전체 대화 이력을 전달하지 않고 대상 경로,
-검색 패턴, 결과 형식만 전달합니다. Native Multi-Agent V2의 현재 runtime은
-역할 이름만으로 child 모델을 전환하지 않고 parent 설정을 상속하므로, root는
-child spawn 때 반드시 `model`과 `reasoning_effort`를 명시합니다. 이 동작은
-프로젝트에서 Luna/low child의 runtime metadata로 검증했습니다.
-
-평소 실행 방법은 변하지 않습니다.
-
-```powershell
-.\scripts\codex-ctf.ps1
-```
-
-`scripts\codex-ctf.ps1`는 기존 plugin pruning을 적용하고 프로젝트 로컬
-모델 설정을 그대로 로드합니다. 따라서 사용자가 `-m`이나 reasoning 옵션을
-매번 지정할 필요가 없습니다.
-
-동일한 plugin override는 프로젝트 로컬 `.codex/config.toml`에도 있습니다.
-따라서 이 저장소에서 시작한 새 세션은 아래처럼 `codex`를 직접 실행해도
-ECC와 비CTF productivity 플러그인을 model-visible skills에서 제외합니다.
-전역 `%USERPROFILE%\.codex`의 설치·활성화 상태에는 영향을 주지 않습니다.
-
-```powershell
-Set-Location C:\lee-ctf
-codex
-```
-
-다른 명령에 인수를 전달할 수도 있습니다.
-
-```powershell
-.\scripts\codex-ctf.ps1 exec --ephemeral
-```
-
-### 재현성 확인 기준
-
-다른 장비로 옮긴 직후 아래 세 검사가 모두 통과하면 기본 환경이 갖춰진
-것입니다.
-
-```powershell
-.\ctf.ps1 doctor --project-only  # Python, 프로젝트 구조, 스킬 스냅샷
-.\ctf.ps1 doctor --wsl-tools     # kali-linux의 58개 도구 기준선
-python .\scripts\check_skill_snapshot.py
-```
-
-호스트의 `docker`, `7z`, `jq`, `gdb`, `file`, `socat`, `ncat` 등은 challenge에
-따라 유용한 선택 도구입니다. `doctor`가 경고로 보고할 수 있지만, Linux 전용
-작업의 기준 환경은 Kali WSL입니다.
-
-## 보안 및 재현성
-
-- `input/`은 수정하지 않습니다. 복사본을 `work/`에서 분석합니다.
-- 솔버는 플래그 후보를 런타임에 도출해 stdout으로만 출력합니다.
-- 라이브 플래그·토큰·자격 증명은 무시되는 `.local/`에만 둡니다.
-- tracked notes, evidence, write-up에는 플래그 원문을 쓰지 않습니다.
-- `ctf verify`는 후보 누출을 검사하고 증거·입력·솔버의 연결을 검증합니다.
-- 외부 플랫폼 제출은 사용자의 명시적 승인 후에만 수행합니다.
-
-원격 저장소는 대회가 진행 중이거나 challenge 자료가 비공개일 때 반드시
-private으로 유지하세요.
+- 외부 host, URL, account, port는 challenge metadata 또는 사용자가 제공한 대상에만 연결합니다.
+- flag를 제출하거나 third party에 연락하지 않습니다.
+- tracked notes/evidence/write-up에 live flag 또는 credential을 기록하지 않습니다.
+- `git status`, artifact hash, solver output을 재현 확인에 사용합니다.
