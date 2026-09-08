@@ -340,3 +340,33 @@ validated staging 결과를 사용하며 `.agents/skills`를 독립적인 수정
 | raw output이 Git status에 보임 | `.local\llm-runs\` 아래에서 실행했는지 확인하고 flag, token, cookie를 tracked 파일에 옮기지 않습니다. |
 | mock test 실패 | Python 3.10+에서 `python -m unittest discover -s tests -v`를 실행합니다. mock target은 외부 API나 유료 model을 사용하지 않습니다. |
 | skill context warning 재발 | project root에서 실행 중인지, `[skills] include_instructions = false`와 ECC project disable이 유지되는지 확인합니다. |
+
+## LLM chatbot v2 merge gate
+
+v2는 representation mutation만 반복하지 않습니다. `ctf-llm`은 baseline → defense
+topology → semantic strategy → bounded representation change → probe → response classifier →
+next-family selection의 loop를 사용합니다. partial leak은 reconstruction/oracle로, persisted
+session 차이는 multi-turn sequence로, output/judge 차이는 pipeline control probe로 전환합니다.
+`mutate_prompt.py`는 case/whitespace/encoding/JSON 같은 deterministic representation만
+담당하며 semantic reframe은 playbook, recipe, strategy selector와 coordinator가 결정합니다.
+
+새 chatbot reference와 recipe는 SKILL.md에서 on-demand로만 읽습니다. 따라서
+`[skills] include_instructions = false`를 유지하는 한 casebook이나 payload-like recipe가
+initial Codex context에 자동 주입되지 않습니다.
+
+`feature/llm-ctf`를 main으로 merge하기 전에는 다음을 모두 확인합니다.
+
+```text
+- ctf-skills source/lock/manifest SHA와 tree hash 일치
+- project doctor 및 skill snapshot 통과
+- traditional ai-ml 및 ai-ml/subtype=llm routing 통과
+- chatbot benchmark 8/8 (최소 기준 7/8) 통과
+- Codex prompt-input에 skill context budget warning 없음
+- 실제 제공된 Web 및 Reverse challenge smoke test 통과
+- 실제 chatbot challenge에서 source-first, response-driven pivot, fresh reproduction 확인
+```
+
+이 저장소의 deterministic benchmark는 plain secret, hidden system context, keyword input
+filter, exact/sub-string output filter, judge-like guard, multi-turn state, mixed guard를 다룹니다.
+이는 real challenge solve를 대체하지 않으며 raw response와 live flag는 계속
+`.local\llm-runs\`에만 둡니다.

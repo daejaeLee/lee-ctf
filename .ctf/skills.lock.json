@@ -3,8 +3,8 @@
   "source": "https://github.com/daejaeLee/ctf-skills",
   "upstream": "https://github.com/ljagiello/ctf-skills",
   "ref": "feature/ctf-llm",
-  "resolved_commit": "39bc38a9d0388caa2ef4b17e40fb68f05ee3728e",
-  "previous_commit": "36c72e53a96a035791821caff7440882ea0f5c57",
+  "resolved_commit": "a74de9825eb48f7452735bbc308b4047fb3c7516",
+  "previous_commit": "39bc38a9d0388caa2ef4b17e40fb68f05ee3728e",
   "upstream_relation_at_install": {
     "ahead": 0,
     "behind": 0
@@ -12,7 +12,7 @@
   "installed_at": "2026-09-08",
   "scope": ".agents/skills",
   "manifest": ".ctf/skills.manifest.json",
-  "tree_sha256": "83447e572c0685e97212025c6b0297f2ddf47294f7f4d1e3ce6581123aabdbdf",
+  "tree_sha256": "757e4cd22b5687ee5fd4880749273a3b42cc152ae0eb9396b597bf62051d3b04",
   "skills": [
     "ctf-ai-ml",
     "ctf-llm",

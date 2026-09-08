@@ -45,9 +45,11 @@ def json_path(value: Any, path: str | None) -> str:
     return current if isinstance(current, str) else json.dumps(current, ensure_ascii=False)
 
 
-def probe(config: dict[str, Any], prompt: str) -> dict[str, Any]:
+def probe(config: dict[str, Any], prompt: str, session: str | None = None) -> dict[str, Any]:
     request_config = copy.deepcopy(config["request"])
     request_config = resolve(request_config)
+    if session is not None:
+        request_config = json.loads(json.dumps(request_config).replace("{{session}}", session))
     method = str(request_config.get("method", "POST")).upper()
     url = str(request_config["url"])
     headers = {str(k): str(v) for k, v in request_config.get("headers", {}).items()}
@@ -85,9 +87,10 @@ def main() -> int:
     parser.add_argument("--prompt", required=True)
     parser.add_argument("--output", required=True)
     parser.add_argument("--family", default="manual")
+    parser.add_argument("--session", help="replace {{session}} in the request configuration")
     args = parser.parse_args()
     config = json.loads(Path(args.config).read_text(encoding="utf-8"))
-    result = probe(config, args.prompt)
+    result = probe(config, args.prompt, session=args.session)
     result.update({"family": args.family, "prompt": args.prompt})
     with Path(args.output).open("a", encoding="utf-8", newline="\n") as handle:
         handle.write(json.dumps(result, ensure_ascii=False) + "\n")

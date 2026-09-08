@@ -13,6 +13,10 @@ SPEC = importlib.util.spec_from_file_location("llm_probe", Path(__file__).with_n
 assert SPEC and SPEC.loader
 llm_probe = importlib.util.module_from_spec(SPEC)
 SPEC.loader.exec_module(llm_probe)
+CLASSIFIER_SPEC = importlib.util.spec_from_file_location("response_classifier", Path(__file__).with_name("response_classifier.py"))
+assert CLASSIFIER_SPEC and CLASSIFIER_SPEC.loader
+response_classifier = importlib.util.module_from_spec(CLASSIFIER_SPEC)
+CLASSIFIER_SPEC.loader.exec_module(response_classifier)
 
 
 def main() -> int:
@@ -24,6 +28,7 @@ def main() -> int:
     parser.add_argument("--delay", type=float, default=0.0)
     parser.add_argument("--family", default="campaign")
     parser.add_argument("--stop-on-candidate", action="store_true")
+    parser.add_argument("--session", help="replace {{session}} in target config")
     args = parser.parse_args()
     if args.max_probes < 1 or args.max_probes > 200:
         parser.error("--max-probes must be between 1 and 200")
@@ -33,8 +38,9 @@ def main() -> int:
         for index, prompt in enumerate((item for item in prompts if item.strip()), start=1):
             if index > args.max_probes:
                 break
-            result = llm_probe.probe(config, prompt)
+            result = llm_probe.probe(config, prompt, session=args.session)
             result.update({"id": index, "family": args.family, "prompt": prompt})
+            result["classifier"] = response_classifier.classify(result)
             output.write(json.dumps(result, ensure_ascii=False) + "\n")
             if result["signals"]["candidate"] and args.stop_on_candidate:
                 break
