@@ -3,8 +3,8 @@
   "source": "https://github.com/daejaeLee/ctf-skills",
   "upstream": "https://github.com/ljagiello/ctf-skills",
   "ref": "feature/ctf-llm",
-  "resolved_commit": "a74de9825eb48f7452735bbc308b4047fb3c7516",
-  "previous_commit": "39bc38a9d0388caa2ef4b17e40fb68f05ee3728e",
+  "resolved_commit": "7462c1d1802a8fac4f415782a22be443f9bd3127",
+  "previous_commit": "a74de9825eb48f7452735bbc308b4047fb3c7516",
   "upstream_relation_at_install": {
     "ahead": 0,
     "behind": 0
