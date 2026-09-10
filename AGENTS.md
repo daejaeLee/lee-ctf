@@ -45,16 +45,43 @@ without explicit authorization.
 
 ## Model orchestration
 
-- Terra/medium coordinates normal work. Delegate independent bounded
-  inventory or search to Luna/low, with `fork_turns="none"` and only the
-  target path, patterns, and required result format.
-- Use Terra/medium or high for analysis, PoCs, solvers, and edits. Escalate
-  assembly/native reasoning, conflicting hypotheses, or two stalled attempts
-  to Sol/high. Use Astra/high only after Sol lacks decisive evidence.
-- When spawning a child, explicitly pass its `model` and `reasoning_effort`;
-  role names alone inherit the parent model in the current runtime. Do not
-  delegate work that is cheaper to perform directly. Return implementation and
-  repetitive changes to Terra or Luna after deep analysis.
+`.ctf/model-routing.json` is the deterministic routing policy; `.codex/config.toml`
+defines the available runtime agents. Before substantive work, determine internally:
+category, active skill, coordinator, initial model, expected complexity, and escalation condition.
+
+- Luna/low is only for bounded inventory, search, classification, and deterministic transforms.
+  Use `fork_turns="none"` with target path, patterns, and result format. Luna MUST NOT make the
+  final exploitability or root-cause judgment.
+- Terra/medium is the normal coordinator and implementation worker. It records every substantive
+  attempt through the challenge routing state.
+- Sol/high receives a structured escalation packet: challenge/category/skill, confirmed facts,
+  rejected hypotheses with evidence, current uncertainty, exact question, relevant artifacts, and
+  work that MUST NOT be repeated. Sol analyzes the packet rather than restarting reconnaissance.
+- Astra/high is an exceptional arbiter only after Sol reports decisive uncertainty unresolved; it is
+  never a normal retry or a substitute for Sol.
+
+An **independent failure** is a failed hypothesis based on a materially different explanation,
+primitive, attack path, or root-cause assumption. Encoding, delimiters, parameter order, retries,
+and other variants of one primitive count once.
+
+### Mandatory escalation gate
+
+Before every substantive Terra attempt, consult `ctf.ps1 routing-status <challenge>` or the saved
+`work/routing-state.json`. Terra MUST use Sol/high for the next analytical action when any one is
+true: two independent failures; ten minutes without material evidence; two materially different
+strategies failed; native/assembly/decompiler reasoning is critical; or unresolved explanations
+conflict. Once required, Terra MUST NOT make one more attempt, reset/reinterpret the counter, or
+claim confidence as an exception. Record `checkpoint` entries with the primitive and model.
+
+After Sol is decisive, Terra performs implementation/verification. If Sol explicitly remains
+unresolved, Astra/high is the only next escalation. Explicitly pass `model` and
+`reasoning_effort` whenever spawning a child; role names alone may inherit the parent model.
+
+### Completion gate
+
+Before ending substantive challenge work, the state must be exactly one of
+`USER_GOAL_COMPLETED`, `ESCALATED`, or `BLOCKED_WITH_REPRODUCIBLE_REASON`. Do not stop on an
+unrecorded “one more attempt” or an unresolved repeated Terra loop.
 
 ## Memory
 

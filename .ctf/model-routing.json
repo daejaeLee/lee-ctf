@@ -1,0 +1,13 @@
+{
+  "schema_version": 1,
+  "source_of_truth": "This policy defines deterministic challenge routing; .codex/config.toml defines Codex runtime agent availability.",
+  "default": {"role": "worker", "model": "gpt-5.6-terra", "reasoning_effort": "medium"},
+  "roles": {
+    "scout": {"agent": "luna", "model": "gpt-5.6-luna", "reasoning_effort": "low"},
+    "worker": {"agent": "terra", "model": "gpt-5.6-terra", "reasoning_effort": "medium"},
+    "analyst": {"agent": "sol", "model": "gpt-5.6-sol", "reasoning_effort": "high"},
+    "arbiter": {"agent": "astra", "model": "gpt-6-astra", "reasoning_effort": "high"}
+  },
+  "thresholds": {"independent_failure_limit": 2, "no_material_progress_seconds": 600},
+  "completion_states": ["USER_GOAL_COMPLETED", "ESCALATED", "BLOCKED_WITH_REPRODUCIBLE_REASON"]
+}

@@ -42,6 +42,7 @@ from solve_verification import (
 
 ROOT = Path(__file__).resolve().parents[1]
 CTF_CONFIG = ROOT / ".ctf" / "config.json"
+MODEL_ROUTING = ROOT / ".ctf" / "model-routing.json"
 SKILLS_LOCK = ROOT / ".ctf" / "skills.lock.json"
 SKILLS_MANIFEST = ROOT / ".ctf" / "skills.manifest.json"
 SKILLS_ROOT = ROOT / ".agents" / "skills"
@@ -50,6 +51,7 @@ TEMPLATE_ROOT = ROOT / "templates" / "challenge"
 LOCAL_FLAGS = ROOT / ".local" / "flags.json"
 INPUT_MANIFEST = Path("evidence") / "input-manifest.json"
 SOLVE_VERIFICATION = Path("evidence") / "solve-verification.json"
+ROUTING_STATE = Path("work") / "routing-state.json"
 
 DEFAULT_CATEGORIES = {
     "ai-ml": "ctf-ai-ml",
@@ -141,6 +143,127 @@ def category_map() -> dict[str, str]:
     if any(not key or not value for key, value in normalized.items()):
         raise ValueError("project config categories cannot contain empty names")
     return normalized
+
+
+def routing_policy() -> dict[str, Any]:
+    policy = read_json(MODEL_ROUTING, {}) or {}
+    if not isinstance(policy, dict) or policy.get("schema_version") != 1:
+        raise ValueError("model routing policy must be a schema_version 1 JSON object")
+    roles = policy.get("roles")
+    thresholds = policy.get("thresholds")
+    if not isinstance(roles, dict) or not isinstance(thresholds, dict):
+        raise ValueError("model routing policy requires roles and thresholds objects")
+    for name in ("scout", "worker", "analyst", "arbiter"):
+        item = roles.get(name)
+        if not isinstance(item, dict) or not all(isinstance(item.get(key), str) and item[key] for key in ("agent", "model", "reasoning_effort")):
+            raise ValueError(f"model routing role is invalid: {name}")
+    if not isinstance(thresholds.get("independent_failure_limit"), int) or not isinstance(thresholds.get("no_material_progress_seconds"), int):
+        raise ValueError("model routing thresholds must be integers")
+    return policy
+
+
+def routing_state_path(challenge: Path) -> Path:
+    return challenge / ROUTING_STATE
+
+
+def initial_routing_state(challenge: Path) -> dict[str, Any]:
+    metadata = read_json(challenge / "challenge.json", {}) or {}
+    return {
+        "schema_version": 1,
+        "challenge": relative_display(challenge),
+        "active_skill": str(metadata.get("skill") or "unknown"),
+        "coordinator": "worker",
+        "active_role": "worker",
+        "attempts": [],
+        "independent_primitives": [],
+        "last_material_progress": None,
+        "native_critical": False,
+        "conflicting_hypotheses": False,
+        "sol_outcome": None,
+        "escalation_reason": None,
+        "completion_state": None,
+        "completion_reason": None,
+    }
+
+
+def load_routing_state(challenge: Path) -> dict[str, Any]:
+    path = routing_state_path(challenge)
+    state = read_json(path, None)
+    if state is None:
+        return initial_routing_state(challenge)
+    if not isinstance(state, dict) or state.get("schema_version") != 1:
+        raise ValueError(f"invalid routing state: {relative_display(path)}")
+    return state
+
+
+def parse_utc(value: str | None) -> datetime | None:
+    if not value:
+        return None
+    try:
+        return datetime.fromisoformat(value.replace("Z", "+00:00"))
+    except ValueError:
+        return None
+
+
+def evaluate_routing(state: dict[str, Any], policy: dict[str, Any], now: datetime | None = None) -> dict[str, str]:
+    """Return the deterministic next routing action; never reset recorded failures."""
+    now = now or datetime.now(timezone.utc)
+    roles = policy["roles"]
+    if state.get("sol_outcome") == "unresolved":
+        return {"action": "ESCALATE_ASTRA", "role": "arbiter", "reason": "sol_unresolved"}
+    if state.get("sol_outcome") == "decisive":
+        return {"action": "RETURN_TERRA", "role": "worker", "reason": "sol_decisive_strategy"}
+    if state.get("native_critical"):
+        return {"action": "ESCALATE_SOL", "role": "analyst", "reason": "native_or_assembly_critical_path"}
+    if state.get("conflicting_hypotheses"):
+        return {"action": "ESCALATE_SOL", "role": "analyst", "reason": "conflicting_unresolved_hypotheses"}
+    failures = len(set(str(item) for item in state.get("independent_primitives", [])))
+    if failures >= policy["thresholds"]["independent_failure_limit"]:
+        return {"action": "ESCALATE_SOL", "role": "analyst", "reason": "independent_failure_limit"}
+    last_progress = parse_utc(state.get("last_material_progress"))
+    if last_progress is not None and (now - last_progress).total_seconds() >= policy["thresholds"]["no_material_progress_seconds"]:
+        return {"action": "ESCALATE_SOL", "role": "analyst", "reason": "no_material_progress_threshold"}
+    return {"action": "CONTINUE_TERRA", "role": "worker", "reason": "within_routing_budget"}
+
+
+def routing_summary(state: dict[str, Any], policy: dict[str, Any]) -> dict[str, Any]:
+    decision = evaluate_routing(state, policy)
+    role = policy["roles"][decision["role"]]
+    return {"decision": decision, "role": role, "failures": len(set(state.get("independent_primitives", [])))}
+
+
+def update_routing_notes(challenge: Path, state: dict[str, Any], policy: dict[str, Any]) -> None:
+    notes = challenge / "notes.md"
+    if not notes.is_file():
+        return
+    summary = routing_summary(state, policy)
+    decision, role = summary["decision"], summary["role"]
+    marker_start, marker_end = "<!-- routing-state:start -->", "<!-- routing-state:end -->"
+    block = "\n".join((marker_start, f"- Coordinator: Terra / medium", f"- Active skill: {state.get('active_skill', 'unknown')}", f"- Active model: {role['agent']} / {role['reasoning_effort']}", f"- Independent failures: {summary['failures']}", f"- Last material progress: {state.get('last_material_progress') or 'not recorded'}", f"- Escalation required: {'yes' if decision['action'].startswith('ESCALATE') else 'no'}", f"- Escalated to: {role['agent'] if decision['action'].startswith('ESCALATE') else 'none'}", f"- Escalation reason: {decision['reason']}", f"- Completion state: {state.get('completion_state') or 'IN_PROGRESS'}", f"- Completion reason: {state.get('completion_reason') or 'not recorded'}", marker_end))
+    text = notes.read_text(encoding="utf-8")
+    pattern = re.compile(re.escape(marker_start) + r".*?" + re.escape(marker_end), re.S)
+    if pattern.search(text):
+        notes.write_text(pattern.sub(block, text, count=1), encoding="utf-8", newline="\n")
+
+
+def persist_routing_state(challenge: Path, state: dict[str, Any], policy: dict[str, Any]) -> None:
+    write_json_atomic(routing_state_path(challenge), state)
+    update_routing_notes(challenge, state, policy)
+
+
+def codex_agent_config() -> dict[str, tuple[str, str]]:
+    path = ROOT / ".codex" / "config.toml"
+    text = path.read_text(encoding="utf-8")
+    found: dict[str, tuple[str, str]] = {}
+    for agent in ("luna", "terra", "sol", "astra"):
+        block = re.search(rf"^\[agents\.{agent}\]\s*$([\s\S]*?)(?=^\[|\Z)", text, re.M)
+        if block is None:
+            continue
+        model = re.search(r'^model\s*=\s*"([^"]+)"\s*$', block.group(1), re.M)
+        effort = re.search(r'^model_reasoning_effort\s*=\s*"([^"]+)"\s*$', block.group(1), re.M)
+        if model and effort:
+            found[agent] = (model.group(1), effort.group(1))
+    return found
 
 
 def slugify(value: str) -> str:
@@ -277,11 +400,87 @@ def cmd_new(args: argparse.Namespace) -> int:
         target_path = destination / relative
         target_path.parent.mkdir(parents=True, exist_ok=True)
         target_path.touch()
+    policy = routing_policy()
+    persist_routing_state(destination, initial_routing_state(destination), policy)
 
     print(relative_display(destination))
     print(f"skill: {skill}")
     print(f"next: .\\ctf.ps1 import {relative_display(destination)} <artifact...>, then run triage")
     return 0
+
+
+def print_routing_status(challenge: Path) -> int:
+    policy = routing_policy()
+    state = load_routing_state(challenge)
+    summary = routing_summary(state, policy)
+    decision, role = summary["decision"], summary["role"]
+    print(f"Coordinator : terra/medium")
+    print(f"Skill       : {state.get('active_skill', 'unknown')}")
+    print(f"ActiveModel : {role['agent']}/{role['reasoning_effort']}")
+    print(f"Failures    : {summary['failures']}")
+    print(f"Decision    : {decision['action']}")
+    print(f"Reason      : {decision['reason']}")
+    print(f"Completion  : {state.get('completion_state') or 'IN_PROGRESS'}")
+    if decision["action"].startswith("ESCALATE"):
+        print(f"\nESCALATION REQUIRED\nTarget      : {role['agent']}/{role['reasoning_effort']}")
+    return 0
+
+
+def cmd_route(args: argparse.Namespace) -> int:
+    challenge = challenge_dir(args.challenge)
+    policy = routing_policy()
+    state = load_routing_state(challenge)
+    persist_routing_state(challenge, state, policy)
+    return print_routing_status(challenge)
+
+
+def cmd_routing_status(args: argparse.Namespace) -> int:
+    return print_routing_status(challenge_dir(args.challenge))
+
+
+def cmd_checkpoint(args: argparse.Namespace) -> int:
+    challenge = challenge_dir(args.challenge)
+    policy = routing_policy()
+    state = load_routing_state(challenge)
+    before = evaluate_routing(state, policy)
+    if before["action"] == "ESCALATE_SOL" and args.model != "sol":
+        raise ValueError("Sol escalation is required; no other model can record another substantive attempt")
+    if before["action"] == "ESCALATE_ASTRA" and args.model != "astra":
+        raise ValueError("Astra escalation is required after unresolved Sol analysis")
+    primitive = (args.primitive or args.strategy).strip().lower()
+    if not primitive:
+        raise ValueError("strategy or primitive cannot be empty")
+    independent = bool(args.independent and args.result == "fail" and primitive not in state["independent_primitives"])
+    if independent:
+        state["independent_primitives"].append(primitive)
+    if args.result == "progress":
+        state["last_material_progress"] = utc_now()
+    if args.native_critical:
+        state["native_critical"] = True
+    if args.conflicting_hypotheses:
+        state["conflicting_hypotheses"] = True
+    if args.sol_outcome:
+        if args.model != "sol":
+            raise ValueError("--sol-outcome requires --model sol")
+        state["sol_outcome"] = args.sol_outcome
+    state["attempts"].append({"at": utc_now(), "strategy": args.strategy, "primitive": primitive, "result": args.result, "independent": independent, "model": args.model, "evidence": args.evidence or ""})
+    state["active_role"] = args.model
+    after = evaluate_routing(state, policy)
+    state["escalation_reason"] = after["reason"] if after["action"].startswith("ESCALATE") else None
+    persist_routing_state(challenge, state, policy)
+    return print_routing_status(challenge)
+
+
+def cmd_complete(args: argparse.Namespace) -> int:
+    challenge = challenge_dir(args.challenge)
+    policy = routing_policy()
+    if args.state not in policy["completion_states"]:
+        raise ValueError("invalid terminal completion state")
+    state = load_routing_state(challenge)
+    state["completion_state"] = args.state
+    state["completion_reason"] = args.reason
+    persist_routing_state(challenge, state, policy)
+    return print_routing_status(challenge)
 
 
 def identify_magic(header: bytes, suffix: str) -> str:
@@ -310,6 +509,14 @@ def identify_magic(header: bytes, suffix: str) -> str:
 def sha256_file(path: Path) -> str:
     _size, digest, _identity = _hash_file_snapshot(path, reject_links=False)
     return digest
+
+
+def locked_support_sha256(path: Path, relative: str) -> str:
+    """Keep artifact hashing raw; only normalize Git's vendored-license checkout EOLs."""
+    raw = sha256_file(path)
+    if relative.replace("\\", "/") != ".agents/skills/LICENSE.ctf-skills":
+        return raw
+    return hashlib.sha256(path.read_bytes().replace(b"\r\n", b"\n")).hexdigest()
 
 
 def _is_link_like(path: Path) -> bool:
@@ -1637,6 +1844,26 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         emit("PASS" if config_valid else "FAIL", "project-config", config_detail)
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         emit("FAIL", "project-config", str(exc))
+
+    try:
+        policy = routing_policy()
+        agents = codex_agent_config()
+        role_agent = {"scout": "luna", "worker": "terra", "analyst": "sol", "arbiter": "astra"}
+        routing_valid = all(
+            policy["roles"][role]["agent"] == agent
+            and agents.get(agent) == (policy["roles"][role]["model"], policy["roles"][role]["reasoning_effort"])
+            for role, agent in role_agent.items()
+        )
+        emit("PASS" if routing_valid else "FAIL", "routing-contract", "policy roles match .codex agent models" if routing_valid else "policy/.codex agent model or effort drift")
+        template_notes = (TEMPLATE_ROOT / "notes.md").read_text(encoding="utf-8")
+        template_agents = (TEMPLATE_ROOT / "AGENTS.md").read_text(encoding="utf-8")
+        template_valid = all(marker in template_notes for marker in ("routing-state:start", "attempt-ledger:start")) and "MUST NOT relax" in template_agents
+        emit("PASS" if template_valid else "FAIL", "routing-template", "challenge routing state and inheritance contract" if template_valid else "template routing contract is incomplete")
+        readme = (ROOT / "README.md").read_text(encoding="utf-8")
+        docs_valid = all(value in readme for value in ("gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-sol", "gpt-6-astra")) and "mandatory" in readme.lower()
+        emit("PASS" if docs_valid else "FAIL", "docs-config-sync", "README routing models and escalation documented" if docs_valid else "README routing contract drift")
+    except (OSError, ValueError, json.JSONDecodeError) as exc:
+        emit("FAIL", "routing-contract", str(exc))
     raw_support = lock.get("support_files", [])
     raw_local = lock.get("local_files", [])
     locked_auxiliary = [
@@ -1658,7 +1885,7 @@ def cmd_doctor(args: argparse.Namespace) -> int:
             emit("FAIL", "skill-support", f"invalid checksum: {support['path']}")
             continue
         expected = raw_expected.lower()
-        actual = sha256_file(path) if path.is_file() else ""
+        actual = locked_support_sha256(path, support["path"]) if path.is_file() else ""
         valid = bool(actual) and (not expected or actual == expected)
         detail = relative_display(path) if valid else f"missing or checksum mismatch: {relative_display(path)}"
         emit("PASS" if valid else "FAIL", "skill-support", detail)
@@ -1801,6 +2028,33 @@ def build_parser() -> argparse.ArgumentParser:
     agent_work.add_argument("name")
     agent_work.add_argument("--reuse", action="store_true", help="reuse an existing agent directory without overwriting findings")
     agent_work.set_defaults(handler=cmd_agent_work)
+
+    route = subparsers.add_parser("route", help="initialize and show deterministic model routing for a challenge")
+    route.add_argument("challenge")
+    route.set_defaults(handler=cmd_route)
+
+    routing_status = subparsers.add_parser("routing-status", help="show routing state and mandatory escalation gate")
+    routing_status.add_argument("challenge")
+    routing_status.set_defaults(handler=cmd_routing_status)
+
+    checkpoint = subparsers.add_parser("checkpoint", help="record an attempt and enforce the next model-routing gate")
+    checkpoint.add_argument("challenge")
+    checkpoint.add_argument("--strategy", required=True)
+    checkpoint.add_argument("--primitive", help="root-cause/attack primitive; variations share one primitive")
+    checkpoint.add_argument("--result", choices=("fail", "progress", "blocked"), required=True)
+    checkpoint.add_argument("--independent", action="store_true", help="count a failed, materially distinct primitive once")
+    checkpoint.add_argument("--evidence", help="short material evidence summary")
+    checkpoint.add_argument("--model", choices=("luna", "terra", "sol", "astra"), default="terra")
+    checkpoint.add_argument("--native-critical", action="store_true")
+    checkpoint.add_argument("--conflicting-hypotheses", action="store_true")
+    checkpoint.add_argument("--sol-outcome", choices=("decisive", "unresolved"))
+    checkpoint.set_defaults(handler=cmd_checkpoint)
+
+    complete = subparsers.add_parser("complete", help="record one required terminal completion state with a reproducible reason")
+    complete.add_argument("challenge")
+    complete.add_argument("--state", choices=("USER_GOAL_COMPLETED", "ESCALATED", "BLOCKED_WITH_REPRODUCIBLE_REASON"), required=True)
+    complete.add_argument("--reason", required=True)
+    complete.set_defaults(handler=cmd_complete)
 
     status = subparsers.add_parser("status", help="list all challenge states")
     status.set_defaults(handler=cmd_status)

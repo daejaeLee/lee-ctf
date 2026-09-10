@@ -279,3 +279,78 @@ marketplace name이 다르면 `codex plugin marketplace list --json`으로 확�
 - flag를 제출하거나 third party에 연락하지 않습니다.
 - tracked notes/evidence/write-up에 live flag 또는 credential을 기록하지 않습니다.
 - `git status`, artifact hash, solver output을 재현 확인에 사용합니다.
+
+## State-based model routing
+
+Codex runtime agent 정의는 `.codex/config.toml`, challenge별 결정 기준은
+`.ctf/model-routing.json`에 있습니다. 두 파일은 `ctf.ps1 doctor --project-only`가 model과
+reasoning effort의 drift를 검사합니다. 별도의 `.codex/agents/*.toml`은 현재 사용하지
+않습니다. 현재 Codex config가 지원하는 `[agents.luna|terra|sol|astra]` 구조가 runtime
+source of truth이기 때문입니다.
+
+| Role | Model / effort | 책임 |
+| --- | --- | --- |
+| Luna scout | `gpt-5.6-luna` / low | bounded discovery, inventory, deterministic transforms |
+| Terra worker | `gpt-5.6-terra` / medium | coordinator, analysis, PoC, implementation, verification |
+| Sol analyst | `gpt-5.6-sol` / high | failed hypotheses, native/decompiler, conflicting evidence의 deep analysis |
+| Astra arbiter | `gpt-6-astra` / high | Sol이 결정적으로 해결하지 못한 architecture-level uncertainty |
+
+### Routing state machine
+
+```text
+Pre-flight -> Terra attempt -> checkpoint
+                    | progress
+                    v
+                 Terra continue
+                    |
+ two independent failures / 10m no material evidence / native / conflict
+                    v
+                 Sol required -> decisive -> Terra verification
+                              -> unresolved -> Astra
+```
+
+Substantive work 전에는 category, active skill, coordinator, expected complexity, escalation
+condition을 정합니다. `notes.md`의 Routing state와 Attempt ledger, 그리고
+`work/routing-state.json`이 현재 attempt state를 함께 보여 줍니다.
+
+Independent failure는 서로 다른 root-cause explanation, primitive, attack path, hypothesis의
+실패입니다. 같은 primitive의 encoding, delimiter, parameter order, retry는 여러 failure로
+세지 않습니다. Escalation이 required된 뒤 Terra는 “one more attempt”를 할 수 없으며,
+`checkpoint --model terra`도 거부됩니다.
+
+```powershell
+# 현재 routing gate
+.\ctf.ps1 route c\event\web\challenge
+.\ctf.ps1 routing-status c\event\web\challenge
+
+# materially distinct primitive 한 번 실패 기록
+.\ctf.ps1 checkpoint c\event\web\challenge `
+  --strategy auth-bypass --primitive auth-boundary --result fail --independent `
+  --evidence "session binding rejects valid token" --model terra
+
+# 두 번째 independent failure 뒤에는 Sol/high가 mandatory
+.\ctf.ps1 checkpoint c\event\web\challenge `
+  --strategy parser-confusion --primitive parser-state --result fail --independent --model terra
+
+# terminal completion state and reproducible reason
+.\ctf.ps1 complete c\event\web\challenge `
+  --state USER_GOAL_COMPLETED --reason "solve/solve.py reproduced the candidate"
+```
+
+Sol에게는 자유형 history 대신 challenge/category/skill, confirmed facts, rejected hypotheses와
+evidence, uncertainty, exact question, relevant artifact, `Do not repeat`을 포함한 escalation
+packet을 전달합니다. Sol이 decisive strategy를 반환하면 Terra가 구현·검증으로 돌아가고,
+Sol이 unresolved를 명시한 경우에만 Astra를 고려합니다.
+
+최종 substantive challenge 상태는 `USER_GOAL_COMPLETED`, `ESCALATED`,
+`BLOCKED_WITH_REPRODUCIBLE_REASON` 중 하나여야 합니다. 새 PC에서는 repository clone 뒤
+`.\ctf.ps1 doctor --project-only`로 routing contract와 template을 먼저 확인합니다.
+
+### Routing troubleshooting
+
+| 증상 | 조치 |
+| --- | --- |
+| Terra가 계속 시도함 | `.\ctf.ps1 routing-status <challenge>`를 실행하고 Sol escalation packet을 먼저 만듭니다. |
+| 같은 variation이 failure를 늘림 | `--primitive`을 동일하게 기록합니다. unique primitive만 independent failure입니다. |
+| model/effort 문서 drift | `.\ctf.ps1 doctor --project-only`의 `routing-contract`, `docs-config-sync`를 확인합니다. |
+| local instruction이 gate를 약화 | template local `AGENTS.md`는 root invariant를 상속하며 완화할 수 없습니다. |

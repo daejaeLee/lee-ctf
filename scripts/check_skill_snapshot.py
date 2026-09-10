@@ -42,6 +42,20 @@ def sha256_file(path: Path) -> str:
     return digest.hexdigest()
 
 
+def sha256_locked_file(path: Path, relative: str, expected: str) -> str:
+    """Hash lock payload; tolerate Git's CRLF checkout for the vendored license.
+
+    Prefer the exact on-disk hash: fixtures and repositories with LF checkouts
+    must retain their original behavior.  Only fall back to LF normalization
+    when the lone vendored license is checked out with CRLF on Windows.
+    """
+    raw = sha256_file(path)
+    if raw == expected or not relative.replace("\\", "/").endswith("LICENSE.ctf-skills"):
+        return raw
+    data = path.read_bytes().replace(b"\r\n", b"\n")
+    return hashlib.sha256(data).hexdigest()
+
+
 def skill_tree_hash(entries: dict[str, str]) -> str:
     digest = hashlib.sha256()
     for relative, file_hash in sorted(entries.items()):
@@ -297,7 +311,9 @@ def validate_snapshot(workspace: Path = ROOT, lock_path: Path | None = None) -> 
     for relative in sorted(expected_paths - actual_paths):
         errors.append(f"missing skill file: {relative}")
     for relative in sorted(expected_paths & actual_paths):
-        actual_hash = sha256_file(actual_files[relative])
+        actual_hash = sha256_locked_file(
+            actual_files[relative], relative, expected_files[relative]
+        )
         if actual_hash != expected_files[relative]:
             errors.append(f"skill checksum mismatch: {relative}")
 

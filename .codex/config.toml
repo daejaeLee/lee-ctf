@@ -4,8 +4,8 @@ approval_policy = "never"
 #sandbox_mode = "workspace-write"
 sandbox_mode = "danger-full-access"
 
-# Project-local CTF coordinator. Child routing is governed by the concise
-# orchestration policy in AGENTS.md; no global Codex settings are changed.
+# Project-local CTF coordinator. Runtime agents are matched by doctor against
+# .ctf/model-routing.json; no global Codex settings are changed.
 model = "gpt-5.6-terra"
 model_reasoning_effort = "medium"
 

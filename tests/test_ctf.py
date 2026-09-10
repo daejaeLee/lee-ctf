@@ -29,6 +29,7 @@ class WorkspaceCliTests(unittest.TestCase):
         self.root.mkdir()
         ctf.ROOT = self.root
         ctf.CTF_CONFIG = self.root / ".ctf" / "config.json"
+        ctf.MODEL_ROUTING = self.root / ".ctf" / "model-routing.json"
         ctf.SKILLS_LOCK = self.root / ".ctf" / "skills.lock.json"
         ctf.SKILLS_MANIFEST = self.root / ".ctf" / "skills.manifest.json"
         ctf.SKILLS_ROOT = self.root / ".agents" / "skills"
@@ -44,6 +45,7 @@ class WorkspaceCliTests(unittest.TestCase):
                 "categories": ctf.DEFAULT_CATEGORIES,
             },
         )
+        ctf.write_json(ctf.MODEL_ROUTING, ctf.read_json(PROJECT_ROOT / ".ctf" / "model-routing.json"))
 
     def tearDown(self) -> None:
         shutil.rmtree(self.root)
@@ -51,6 +53,62 @@ class WorkspaceCliTests(unittest.TestCase):
     def test_slugify_and_alias(self) -> None:
         self.assertEqual(ctf.slugify("Baby SQLi"), "baby-sqli")
         self.assertEqual(ctf.normalize_category("rev"), "reverse")
+
+    def test_routing_state_machine_and_independent_failure_deduplication(self) -> None:
+        policy = ctf.routing_policy()
+        challenge = self.root / "c" / "event" / "web" / "routing"
+        challenge.mkdir(parents=True)
+        ctf.write_json(challenge / "challenge.json", {"skill": "ctf-web"})
+        state = ctf.initial_routing_state(challenge)
+        self.assertEqual(ctf.evaluate_routing(state, policy)["action"], "CONTINUE_TERRA")
+        state["independent_primitives"] = ["auth-boundary"]
+        self.assertEqual(ctf.evaluate_routing(state, policy)["action"], "CONTINUE_TERRA")
+        state["independent_primitives"].extend(["auth-boundary", "parser-state"])
+        self.assertEqual(ctf.evaluate_routing(state, policy)["action"], "ESCALATE_SOL")
+        state["independent_primitives"] = ["same-primitive"] * 20
+        self.assertEqual(ctf.routing_summary(state, policy)["failures"], 1)
+        state["last_material_progress"] = "2026-01-01T00:00:00Z"
+        self.assertEqual(
+            ctf.evaluate_routing(state, policy, ctf.datetime(2026, 1, 1, 0, 10, tzinfo=ctf.timezone.utc))["action"],
+            "ESCALATE_SOL",
+        )
+        state["native_critical"] = True
+        self.assertEqual(ctf.evaluate_routing(state, policy)["reason"], "native_or_assembly_critical_path")
+        state["native_critical"] = False
+        state["conflicting_hypotheses"] = True
+        self.assertEqual(ctf.evaluate_routing(state, policy)["action"], "ESCALATE_SOL")
+        state["conflicting_hypotheses"] = False
+        state["sol_outcome"] = "decisive"
+        self.assertEqual(ctf.evaluate_routing(state, policy)["action"], "RETURN_TERRA")
+        state["sol_outcome"] = "unresolved"
+        self.assertEqual(ctf.evaluate_routing(state, policy)["action"], "ESCALATE_ASTRA")
+
+    def test_checkpoint_rejects_terra_after_mandatory_sol_gate(self) -> None:
+        create = argparse.Namespace(event="Routing", category="web", name="Gate", source_url=None, target_url=None, url=None, host=None, port=None, flag_regex=r"FLAG\{[^}]+\}")
+        self.assertEqual(ctf.cmd_new(create), 0)
+        challenge = self.root / "c" / "routing" / "web" / "gate"
+        for primitive in ("auth-boundary", "parser-state"):
+            args = argparse.Namespace(challenge=str(challenge), strategy=primitive, primitive=primitive, result="fail", independent=True, evidence="no primitive", model="terra", native_critical=False, conflicting_hypotheses=False, sol_outcome=None)
+            self.assertEqual(ctf.cmd_checkpoint(args), 0)
+        blocked = argparse.Namespace(challenge=str(challenge), strategy="one-more", primitive="one-more", result="fail", independent=True, evidence="", model="terra", native_critical=False, conflicting_hypotheses=False, sol_outcome=None)
+        with self.assertRaisesRegex(ValueError, "Sol escalation is required"):
+            ctf.cmd_checkpoint(blocked)
+        blocked.model = "luna"
+        with self.assertRaisesRegex(ValueError, "Sol escalation is required"):
+            ctf.cmd_checkpoint(blocked)
+
+    def test_completion_gate_is_persisted(self) -> None:
+        create = argparse.Namespace(event="Routing", category="web", name="Complete", source_url=None, target_url=None, url=None, host=None, port=None, flag_regex=r"FLAG\{[^}]+\}")
+        self.assertEqual(ctf.cmd_new(create), 0)
+        challenge = self.root / "c" / "routing" / "web" / "complete"
+        complete = argparse.Namespace(
+            challenge=str(challenge),
+            state="BLOCKED_WITH_REPRODUCIBLE_REASON",
+            reason="target is unavailable; evidence/request.log reproduces timeout",
+        )
+        self.assertEqual(ctf.cmd_complete(complete), 0)
+        state = ctf.load_routing_state(challenge)
+        self.assertEqual(state["completion_state"], "BLOCKED_WITH_REPRODUCIBLE_REASON")
 
     def test_project_config_drives_parser_defaults(self) -> None:
         config = ctf.read_json(ctf.CTF_CONFIG)
