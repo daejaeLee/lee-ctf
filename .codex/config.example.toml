@@ -1,0 +1,16 @@
+# Optional user-level Chrome DevTools MCP configuration for WMux.
+# Merge this table into %USERPROFILE%\.codex\config.toml; do not copy the
+# repository configuration over an existing user configuration.
+#
+# `npx` resolves the server on demand.  Pin a reviewed version if your
+# environment requires reproducible dependency resolution.
+[mcp_servers.chrome-devtools]
+command = "npx"
+args = [
+  "-y",
+  "chrome-devtools-mcp@latest",
+  "--browser-url=http://127.0.0.1:9222",
+]
+
+# Do not add --isolated or --executablePath here: either causes the MCP server
+# to launch or select a separate Chrome rather than attach to WMux's CDP proxy.

@@ -1,5 +1,30 @@
 # lee-ctf
 
+## WMux browser session with Chrome DevTools MCP
+
+To attach Chrome DevTools MCP to the browser session already open in WMux,
+merge the `chrome-devtools` table from
+[`.codex/config.example.toml`](.codex/config.example.toml) into the
+user-specific `%USERPROFILE%\.codex\config.toml`. Keep the setting out of the
+repository's real configuration and never commit user paths, tokens, or other
+local settings.
+
+The required server argument is
+`--browser-url=http://127.0.0.1:9222`. Do not use `--isolated` or
+`--executablePath`: those options make the MCP server use a separate browser
+instead of WMux's CDP proxy. Verify the local proxy without changing browser
+state:
+
+```powershell
+curl.exe --silent --show-error --max-time 5 http://127.0.0.1:9222/json/version
+codex mcp get chrome-devtools --json
+```
+
+CDP grants broad control over the attached browser session. Keep the proxy
+bound to loopback, do not expose port 9222 through a firewall, tunnel, or port
+forward, and only run a reviewed MCP server. Restart Codex (or reconnect the
+MCP server) after changing the user configuration.
+
 Windows와 Kali WSL에서 승인된 CTF·모의해킹·보안 연구를 재현 가능하게 수행하기 위한 Codex 작업 공간입니다. 원본 입력, 조사 작업, 증거, 재현 가능한 solver를 분리하고, Codex는 CTF 전용 skill과 짧은 프로젝트 지침을 사용합니다.
 
 ## 빠른 시작
