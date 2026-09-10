@@ -5,9 +5,12 @@
 To attach Chrome DevTools MCP to the browser session already open in WMux,
 merge the `chrome-devtools` table from
 [`.codex/config.example.toml`](.codex/config.example.toml) into the
-user-specific `%USERPROFILE%\.codex\config.toml`. Keep the setting out of the
-repository's real configuration and never commit user paths, tokens, or other
-local settings.
+user-specific `%USERPROFILE%\.codex\config.toml`, replacing the example path
+with the clone's absolute path. The launcher starts WMux if its CDP proxy is
+not already available and waits up to 30 seconds before starting the MCP
+server. Set `WMUX_EXE` to the full `wmux.exe` path if WMux's CLI is not on
+`PATH`. Keep the setting out of the repository's real configuration and never
+commit user paths, tokens, or other local settings.
 
 The required server argument is
 `--browser-url=http://127.0.0.1:9222`. Do not use `--isolated` or

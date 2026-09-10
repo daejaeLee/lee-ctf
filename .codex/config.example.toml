@@ -2,14 +2,16 @@
 # Merge this table into %USERPROFILE%\.codex\config.toml; do not copy the
 # repository configuration over an existing user configuration.
 #
-# `npx` resolves the server on demand.  Pin a reviewed version if your
-# environment requires reproducible dependency resolution.
+# Replace C:\\path\\to\\lee-ctf with this clone's absolute path. The launcher
+# starts WMux only when its loopback CDP proxy is unavailable, then preserves
+# stdin/stdout for the MCP server. Pin a reviewed package version in the
+# launcher if your environment requires reproducible dependency resolution.
 [mcp_servers.chrome-devtools]
-command = "npx"
+command = "powershell.exe"
 args = [
-  "-y",
-  "chrome-devtools-mcp@latest",
-  "--browser-url=http://127.0.0.1:9222",
+  "-NoProfile",
+  "-ExecutionPolicy", "Bypass",
+  "-File", "C:\\path\\to\\lee-ctf\\scripts\\Start-WmuxChromeDevToolsMcp.ps1",
 ]
 
 # Do not add --isolated or --executablePath here: either causes the MCP server
