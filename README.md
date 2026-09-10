@@ -1,32 +1,40 @@
 # lee-ctf
 
-## WMux browser session with Chrome DevTools MCP
+## WMux browser session
 
-To attach Chrome DevTools MCP to the browser session already open in WMux,
-merge the `chrome-devtools` table from
-[`.codex/config.example.toml`](.codex/config.example.toml) into the
-user-specific `%USERPROFILE%\.codex\config.toml`, replacing the example path
-with the clone's absolute path. The launcher starts WMux if its CDP proxy is
-not already available and waits up to 30 seconds before starting the MCP
-server. Set `WMUX_EXE` to the full `wmux.exe` path if WMux's CLI is not on
-`PATH`. Keep the setting out of the repository's real configuration and never
-commit user paths, tokens, or other local settings.
+Use WMux's bundled browser CLI for an already-open WMux browser panel.  WMux
+0.50.0 exposes a page-level CDP proxy on port 9222, but it rejects the
+browser-context commands used during Chrome DevTools MCP initialization (for
+example, `Target.getBrowserContexts`).  A successful response from
+`/json/version` therefore does not mean Chrome DevTools MCP can control the
+panel.  Do not add a `chrome-devtools` MCP entry that points at this proxy.
 
-The required server argument is
-`--browser-url=http://127.0.0.1:9222`. Do not use `--isolated` or
-`--executablePath`: those options make the MCP server use a separate browser
-instead of WMux's CDP proxy. Verify the local proxy without changing browser
-state:
+List the current session's workspaces and surfaces, then pass the selected
+browser surface explicitly.  Surface IDs are session-specific; do not reuse
+an ID from a previous session or omit `--surface` when several panels exist.
 
 ```powershell
-curl.exe --silent --show-error --max-time 5 http://127.0.0.1:9222/json/version
-codex mcp get chrome-devtools --json
+wmux list-workspaces
+wmux list-surfaces --workspace <workspace-id>
+
+$surface = '<current-browser-surface-id>'
+.\scripts\Invoke-WmuxBrowser.ps1 snapshot --surface $surface
+.\scripts\Invoke-WmuxBrowser.ps1 get-text --surface $surface
 ```
 
-CDP grants broad control over the attached browser session. Keep the proxy
-bound to loopback, do not expose port 9222 through a firewall, tunnel, or port
-forward, and only run a reviewed MCP server. Restart Codex (or reconnect the
-MCP server) after changing the user configuration.
+`Invoke-WmuxBrowser.ps1` invokes WMux's installed Node CLI directly, avoiding
+the `cmd.exe` reparsing done by the PowerShell shim.  Quote JavaScript as one
+PowerShell argument when using `eval`, and obtain a fresh snapshot immediately
+before a click or form action:
+
+```powershell
+.\scripts\Invoke-WmuxBrowser.ps1 eval 'document.title' --surface $surface
+```
+
+The WMux CLI must be on `PATH`, as installed by WMux.  Browser access is
+powerful and may use an existing authenticated session: keep the proxy bound
+to loopback, do not expose port 9222 through a firewall, tunnel, or port
+forward, and only operate browser targets in challenge scope.
 
 Windows와 Kali WSL에서 승인된 CTF·모의해킹·보안 연구를 재현 가능하게 수행하기 위한 Codex 작업 공간입니다. 원본 입력, 조사 작업, 증거, 재현 가능한 solver를 분리하고, Codex는 CTF 전용 skill과 짧은 프로젝트 지침을 사용합니다.
 
