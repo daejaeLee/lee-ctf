@@ -85,6 +85,14 @@ without explicit authorization.
 - Use PowerShell 5.1-compatible host scripts and `curl.exe`. Prefer Kali WSL
   for Linux-first pwn, reverse, forensics, and malware work; never execute an
   unknown malware sample on Windows.
+- For authenticated web CTFs, use the existing browser only to establish or
+  obtain the authorized session, launch URL, short-lived token, or other
+  runtime material. Once those values are obtained, prefer a reproducible
+  `curl.exe` or in-page `fetch` request sequence for recon, solving, flag
+  claim, and authorized submission. Do not rely on fragile UI field filling
+  or stale accessibility references when an equivalent documented request is
+  available. Keep every request within the challenge's declared hosts and
+  preserve token/seed/proof instance affinity.
 - Use challenge-local environments when dependencies conflict. Interact only
   with hosts, ports, URLs, accounts, and files named by challenge metadata or
   explicitly supplied by the user.

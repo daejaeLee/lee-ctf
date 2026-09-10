@@ -4,12 +4,17 @@ These rules apply to every challenge below `c/`.
 
 ## Browser and submission
 
-For authenticated launch, runtime inspection, or platform submission, use the
-existing logged-in wmux browser (`wmux browser`) and re-snapshot after DOM
-changes. Do not use an independent profile. A runtime flag claim is candidate
+Use the existing logged-in wmux browser (`wmux browser`) only to establish the
+authenticated session or obtain launch URLs, short-lived tokens, and other
+runtime material; do not use an independent profile. Then prefer deterministic
+`curl.exe` or in-page `fetch` requests for runtime inspection, solving, flag
+claim, and authorized platform submission. This avoids fragile UI field
+filling and stale DOM/accessibility references. Keep each launch token,
+artifact seed, proof, and claim in the same runtime instance; never replay a
+spent token or mix values across launches. A runtime flag claim is candidate
 recovery; submission requires explicit user authorization. After authorized
-submission, refresh or otherwise verify the solved state. Never track the live
-candidate.
+submission, refresh or query the platform's documented state endpoint to
+verify the solved state. Never track the live candidate.
 
 ## Challenge workflow
 
