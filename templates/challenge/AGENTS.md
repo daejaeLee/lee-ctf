@@ -9,4 +9,9 @@
 - Do not submit a recovered flag automatically.
 - Keep the live flag only under `.local/`. Redact it from tracked notes, evidence, and write-ups even if a skill asks for the real value.
 - Have `solve/solve.py` derive the candidate at runtime and emit it on stdout without hard-coding or persisting it; verification scans challenge files for leakage.
-- This challenge inherits the root model-routing and escalation invariants. Local instructions MUST NOT relax independent-failure accounting, mandatory Sol escalation, Astra fallback conditions, explicit child model/reasoning selection, or completion gates.
+## Routing invariants
+
+This challenge inherits the root model-routing and escalation policy. Local instructions may add
+challenge-specific scope or workflow rules, but MUST NOT relax independent-failure accounting,
+mandatory Sol escalation, Astra fallback conditions, explicit child model/reasoning selection, or
+completion gates.

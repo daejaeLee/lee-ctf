@@ -174,12 +174,15 @@ def initial_routing_state(challenge: Path) -> dict[str, Any]:
         "active_skill": str(metadata.get("skill") or "unknown"),
         "coordinator": "worker",
         "active_role": "worker",
+        "routing_epoch": 0,
+        "started_at": utc_now(),
         "attempts": [],
         "independent_primitives": [],
         "last_material_progress": None,
         "native_critical": False,
         "conflicting_hypotheses": False,
         "sol_outcome": None,
+        "astra_outcome": None,
         "escalation_reason": None,
         "completion_state": None,
         "completion_reason": None,
@@ -193,6 +196,15 @@ def load_routing_state(challenge: Path) -> dict[str, Any]:
         return initial_routing_state(challenge)
     if not isinstance(state, dict) or state.get("schema_version") != 1:
         raise ValueError(f"invalid routing state: {relative_display(path)}")
+    # State files written before routing epochs remain readable.
+    state.setdefault("routing_epoch", 0)
+    state.setdefault("started_at", None)
+    state.setdefault("independent_primitives", [])
+    state.setdefault("attempts", [])
+    state.setdefault("astra_outcome", None)
+    state.setdefault("completion_state", None)
+    state.setdefault("completion_reason", None)
+    state.setdefault("completion_evidence", None)
     return state
 
 
@@ -206,9 +218,13 @@ def parse_utc(value: str | None) -> datetime | None:
 
 
 def evaluate_routing(state: dict[str, Any], policy: dict[str, Any], now: datetime | None = None) -> dict[str, str]:
-    """Return the deterministic next routing action; never reset recorded failures."""
+    """Evaluate the active routing epoch without discarding its attempt ledger."""
     now = now or datetime.now(timezone.utc)
-    roles = policy["roles"]
+    # Outcomes are only pending until the caller begins the next Terra epoch.
+    if state.get("astra_outcome") == "blocked":
+        return {"action": "BLOCKED", "role": "arbiter", "reason": "astra_blocked"}
+    if state.get("astra_outcome") == "decisive":
+        return {"action": "RETURN_TERRA", "role": "worker", "reason": "astra_decisive_strategy"}
     if state.get("sol_outcome") == "unresolved":
         return {"action": "ESCALATE_ASTRA", "role": "arbiter", "reason": "sol_unresolved"}
     if state.get("sol_outcome") == "decisive":
@@ -220,8 +236,8 @@ def evaluate_routing(state: dict[str, Any], policy: dict[str, Any], now: datetim
     failures = len(set(str(item) for item in state.get("independent_primitives", [])))
     if failures >= policy["thresholds"]["independent_failure_limit"]:
         return {"action": "ESCALATE_SOL", "role": "analyst", "reason": "independent_failure_limit"}
-    last_progress = parse_utc(state.get("last_material_progress"))
-    if last_progress is not None and (now - last_progress).total_seconds() >= policy["thresholds"]["no_material_progress_seconds"]:
+    reference_time = parse_utc(state.get("last_material_progress")) or parse_utc(state.get("started_at"))
+    if reference_time is not None and (now - reference_time).total_seconds() >= policy["thresholds"]["no_material_progress_seconds"]:
         return {"action": "ESCALATE_SOL", "role": "analyst", "reason": "no_material_progress_threshold"}
     return {"action": "CONTINUE_TERRA", "role": "worker", "reason": "within_routing_budget"}
 
@@ -232,6 +248,20 @@ def routing_summary(state: dict[str, Any], policy: dict[str, Any]) -> dict[str, 
     return {"decision": decision, "role": role, "failures": len(set(state.get("independent_primitives", [])))}
 
 
+def begin_terra_epoch(state: dict[str, Any]) -> None:
+    """Keep history but clear only per-cycle routing gates after deep analysis."""
+    state["routing_epoch"] = int(state.get("routing_epoch", 0)) + 1
+    state["active_role"] = "worker"
+    state["started_at"] = utc_now()
+    state["last_material_progress"] = state["started_at"]
+    state["independent_primitives"] = []
+    state["native_critical"] = False
+    state["conflicting_hypotheses"] = False
+    state["sol_outcome"] = None
+    state["astra_outcome"] = None
+    state["escalation_reason"] = None
+
+
 def update_routing_notes(challenge: Path, state: dict[str, Any], policy: dict[str, Any]) -> None:
     notes = challenge / "notes.md"
     if not notes.is_file():
@@ -239,7 +269,7 @@ def update_routing_notes(challenge: Path, state: dict[str, Any], policy: dict[st
     summary = routing_summary(state, policy)
     decision, role = summary["decision"], summary["role"]
     marker_start, marker_end = "<!-- routing-state:start -->", "<!-- routing-state:end -->"
-    block = "\n".join((marker_start, f"- Coordinator: Terra / medium", f"- Active skill: {state.get('active_skill', 'unknown')}", f"- Active model: {role['agent']} / {role['reasoning_effort']}", f"- Independent failures: {summary['failures']}", f"- Last material progress: {state.get('last_material_progress') or 'not recorded'}", f"- Escalation required: {'yes' if decision['action'].startswith('ESCALATE') else 'no'}", f"- Escalated to: {role['agent'] if decision['action'].startswith('ESCALATE') else 'none'}", f"- Escalation reason: {decision['reason']}", f"- Completion state: {state.get('completion_state') or 'IN_PROGRESS'}", f"- Completion reason: {state.get('completion_reason') or 'not recorded'}", marker_end))
+    block = "\n".join((marker_start, f"- Routing epoch: {state.get('routing_epoch', 0)}", f"- Coordinator: Terra / medium", f"- Active skill: {state.get('active_skill', 'unknown')}", f"- Active model: {role['agent']} / {role['reasoning_effort']}", f"- Independent failures in current epoch: {summary['failures']}", f"- Started at: {state.get('started_at') or 'not recorded'}", f"- Last material progress: {state.get('last_material_progress') or 'not recorded'}", f"- Sol outcome: {state.get('sol_outcome') or 'pending/none'}", f"- Astra outcome: {state.get('astra_outcome') or 'pending/none'}", f"- Escalation required: {'yes' if decision['action'].startswith('ESCALATE') else 'no'}", f"- Escalated to: {role['agent'] if decision['action'].startswith('ESCALATE') else 'none'}", f"- Escalation reason: {decision['reason']}", f"- Completion state: {state.get('completion_state') or 'IN_PROGRESS'}", f"- Completion reason: {state.get('completion_reason') or 'not recorded'}", marker_end))
     text = notes.read_text(encoding="utf-8")
     pattern = re.compile(re.escape(marker_start) + r".*?" + re.escape(marker_end), re.S)
     if pattern.search(text):
@@ -417,6 +447,7 @@ def print_routing_status(challenge: Path) -> int:
     print(f"Coordinator : terra/medium")
     print(f"Skill       : {state.get('active_skill', 'unknown')}")
     print(f"ActiveModel : {role['agent']}/{role['reasoning_effort']}")
+    print(f"Epoch       : {state.get('routing_epoch', 0)}")
     print(f"Failures    : {summary['failures']}")
     print(f"Decision    : {decision['action']}")
     print(f"Reason      : {decision['reason']}")
@@ -447,12 +478,15 @@ def cmd_checkpoint(args: argparse.Namespace) -> int:
         raise ValueError("Sol escalation is required; no other model can record another substantive attempt")
     if before["action"] == "ESCALATE_ASTRA" and args.model != "astra":
         raise ValueError("Astra escalation is required after unresolved Sol analysis")
-    primitive = (args.primitive or args.strategy).strip().lower()
-    if not primitive:
-        raise ValueError("strategy or primitive cannot be empty")
-    independent = bool(args.independent and args.result == "fail" and primitive not in state["independent_primitives"])
+    if before["action"] == "BLOCKED":
+        raise ValueError("Astra recorded a reproducible blocked outcome; record completion instead of another attempt")
+    primitive_id = (getattr(args, "primitive_id", None) or args.primitive or args.strategy).strip().lower()
+    if not primitive_id:
+        raise ValueError("strategy or primitive identity cannot be empty")
+    variant = (getattr(args, "variant", None) or "").strip()
+    independent = bool(args.independent and args.model == "terra" and args.result == "fail" and primitive_id not in state["independent_primitives"])
     if independent:
-        state["independent_primitives"].append(primitive)
+        state["independent_primitives"].append(primitive_id)
     if args.result == "progress":
         state["last_material_progress"] = utc_now()
     if args.native_critical:
@@ -463,9 +497,16 @@ def cmd_checkpoint(args: argparse.Namespace) -> int:
         if args.model != "sol":
             raise ValueError("--sol-outcome requires --model sol")
         state["sol_outcome"] = args.sol_outcome
-    state["attempts"].append({"at": utc_now(), "strategy": args.strategy, "primitive": primitive, "result": args.result, "independent": independent, "model": args.model, "evidence": args.evidence or ""})
+    if getattr(args, "astra_outcome", None):
+        if args.model != "astra":
+            raise ValueError("--astra-outcome requires --model astra")
+        state["astra_outcome"] = args.astra_outcome
+    state["attempts"].append({"at": utc_now(), "epoch": state.get("routing_epoch", 0), "strategy": args.strategy, "primitive": primitive_id, "primitive_id": primitive_id, "variant": variant, "result": args.result, "independent": independent, "model": args.model, "evidence": args.evidence or ""})
     state["active_role"] = args.model
     after = evaluate_routing(state, policy)
+    if after["action"] == "RETURN_TERRA":
+        begin_terra_epoch(state)
+        after = evaluate_routing(state, policy)
     state["escalation_reason"] = after["reason"] if after["action"].startswith("ESCALATE") else None
     persist_routing_state(challenge, state, policy)
     return print_routing_status(challenge)
@@ -477,8 +518,23 @@ def cmd_complete(args: argparse.Namespace) -> int:
     if args.state not in policy["completion_states"]:
         raise ValueError("invalid terminal completion state")
     state = load_routing_state(challenge)
+    decision = evaluate_routing(state, policy)
+    reason = (args.reason or "").strip()
+    evidence = (getattr(args, "evidence", None) or "").strip()
+    if not reason:
+        raise ValueError("completion requires a non-empty reproducible reason")
+    if args.state == "USER_GOAL_COMPLETED" and (decision["action"].startswith("ESCALATE") or decision["action"] == "BLOCKED"):
+        raise ValueError("cannot complete while mandatory escalation is required")
+    if args.state == "ESCALATED" and not decision["action"].startswith("ESCALATE"):
+        raise ValueError("ESCALATED completion requires an active Sol or Astra escalation")
+    if args.state == "BLOCKED_WITH_REPRODUCIBLE_REASON":
+        if decision["action"].startswith("ESCALATE"):
+            raise ValueError("cannot mark blocked while mandatory escalation is required")
+        if not evidence:
+            raise ValueError("blocked completion requires an evidence reference or reproduction note")
     state["completion_state"] = args.state
-    state["completion_reason"] = args.reason
+    state["completion_reason"] = reason
+    state["completion_evidence"] = evidence
     persist_routing_state(challenge, state, policy)
     return print_routing_status(challenge)
 
@@ -1857,10 +1913,10 @@ def cmd_doctor(args: argparse.Namespace) -> int:
         emit("PASS" if routing_valid else "FAIL", "routing-contract", "policy roles match .codex agent models" if routing_valid else "policy/.codex agent model or effort drift")
         template_notes = (TEMPLATE_ROOT / "notes.md").read_text(encoding="utf-8")
         template_agents = (TEMPLATE_ROOT / "AGENTS.md").read_text(encoding="utf-8")
-        template_valid = all(marker in template_notes for marker in ("routing-state:start", "attempt-ledger:start")) and "MUST NOT relax" in template_agents
+        template_valid = all(marker in template_notes for marker in ("routing-state:start", "attempt-ledger:start", "Routing epoch", "Primitive ID", "Variant")) and "MUST NOT relax" in template_agents
         emit("PASS" if template_valid else "FAIL", "routing-template", "challenge routing state and inheritance contract" if template_valid else "template routing contract is incomplete")
         readme = (ROOT / "README.md").read_text(encoding="utf-8")
-        docs_valid = all(value in readme for value in ("gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-sol", "gpt-6-astra")) and "mandatory" in readme.lower()
+        docs_valid = all(value in readme for value in ("gpt-5.6-luna", "gpt-5.6-terra", "gpt-5.6-sol", "gpt-6-astra", "--primitive-id", "Astra decisive")) and "mandatory" in readme.lower()
         emit("PASS" if docs_valid else "FAIL", "docs-config-sync", "README routing models and escalation documented" if docs_valid else "README routing contract drift")
     except (OSError, ValueError, json.JSONDecodeError) as exc:
         emit("FAIL", "routing-contract", str(exc))
@@ -2040,7 +2096,9 @@ def build_parser() -> argparse.ArgumentParser:
     checkpoint = subparsers.add_parser("checkpoint", help="record an attempt and enforce the next model-routing gate")
     checkpoint.add_argument("challenge")
     checkpoint.add_argument("--strategy", required=True)
-    checkpoint.add_argument("--primitive", help="root-cause/attack primitive; variations share one primitive")
+    checkpoint.add_argument("--primitive", help="legacy primitive identity alias; prefer --primitive-id with --variant")
+    checkpoint.add_argument("--primitive-id", help="stable root-cause/attack primitive identity for independent-failure accounting")
+    checkpoint.add_argument("--variant", help="non-independent representation or payload variation of --primitive-id")
     checkpoint.add_argument("--result", choices=("fail", "progress", "blocked"), required=True)
     checkpoint.add_argument("--independent", action="store_true", help="count a failed, materially distinct primitive once")
     checkpoint.add_argument("--evidence", help="short material evidence summary")
@@ -2048,12 +2106,14 @@ def build_parser() -> argparse.ArgumentParser:
     checkpoint.add_argument("--native-critical", action="store_true")
     checkpoint.add_argument("--conflicting-hypotheses", action="store_true")
     checkpoint.add_argument("--sol-outcome", choices=("decisive", "unresolved"))
+    checkpoint.add_argument("--astra-outcome", choices=("decisive", "blocked"))
     checkpoint.set_defaults(handler=cmd_checkpoint)
 
     complete = subparsers.add_parser("complete", help="record one required terminal completion state with a reproducible reason")
     complete.add_argument("challenge")
     complete.add_argument("--state", choices=("USER_GOAL_COMPLETED", "ESCALATED", "BLOCKED_WITH_REPRODUCIBLE_REASON"), required=True)
     complete.add_argument("--reason", required=True)
+    complete.add_argument("--evidence", help="evidence reference or reproduction note; required for blocked completion")
     complete.set_defaults(handler=cmd_complete)
 
     status = subparsers.add_parser("status", help="list all challenge states")

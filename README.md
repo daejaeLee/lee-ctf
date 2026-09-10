@@ -311,11 +311,14 @@ Pre-flight -> Terra attempt -> checkpoint
 
 Substantive work 전에는 category, active skill, coordinator, expected complexity, escalation
 condition을 정합니다. `notes.md`의 Routing state와 Attempt ledger, 그리고
-`work/routing-state.json`이 현재 attempt state를 함께 보여 줍니다.
+`work/routing-state.json`이 현재 attempt state를 함께 보여 줍니다. Sol 또는 Astra가 decisive
+strategy를 반환하면 기존 ledger/evidence는 보존한 채 새 routing epoch가 시작되며, 해당 epoch의
+failure counter만 0부터 다시 계산합니다.
 
 Independent failure는 서로 다른 root-cause explanation, primitive, attack path, hypothesis의
 실패입니다. 같은 primitive의 encoding, delimiter, parameter order, retry는 여러 failure로
-세지 않습니다. Escalation이 required된 뒤 Terra는 “one more attempt”를 할 수 없으며,
+세지 않습니다. `--primitive-id`에는 안정적인 근본 primitive를, `--variant`에는 urlencode,
+delimiter-change 같은 표현 변형을 기록합니다. Escalation이 required된 뒤 Terra는 “one more attempt”를 할 수 없으며,
 `checkpoint --model terra`도 거부됩니다.
 
 ```powershell
@@ -325,17 +328,24 @@ Independent failure는 서로 다른 root-cause explanation, primitive, attack p
 
 # materially distinct primitive 한 번 실패 기록
 .\ctf.ps1 checkpoint c\event\web\challenge `
-  --strategy auth-bypass --primitive auth-boundary --result fail --independent `
+  --strategy auth-bypass --primitive-id auth-boundary --variant token-format --result fail --independent `
   --evidence "session binding rejects valid token" --model terra
 
 # 두 번째 independent failure 뒤에는 Sol/high가 mandatory
 .\ctf.ps1 checkpoint c\event\web\challenge `
-  --strategy parser-confusion --primitive parser-state --result fail --independent --model terra
+  --strategy parser-confusion --primitive-id parser-state --variant urlencode --result fail --independent --model terra
 
 # terminal completion state and reproducible reason
 .\ctf.ps1 complete c\event\web\challenge `
   --state USER_GOAL_COMPLETED --reason "solve/solve.py reproduced the candidate"
 ```
+
+Sol이 unresolved이면 Astra만 다음 substantive analysis를 수행합니다. Astra decisive도 새 Terra
+epoch를 시작하고, Astra가 reproducibly blocked이면 evidence reference를 포함한
+`BLOCKED_WITH_REPRODUCIBLE_REASON` completion이 가능합니다. A checkpoint가 한 번도 material
+progress를 기록하지 않아도, epoch의 `started_at`부터 10분이 지나면 Sol escalation이 필요합니다.
+Use `checkpoint --model sol --sol-outcome decisive|unresolved` and
+`checkpoint --model astra --astra-outcome decisive|blocked` to record those transitions.
 
 Sol에게는 자유형 history 대신 challenge/category/skill, confirmed facts, rejected hypotheses와
 evidence, uncertainty, exact question, relevant artifact, `Do not repeat`을 포함한 escalation

@@ -3,11 +3,15 @@
 ## Routing state
 
 <!-- routing-state:start -->
+- Routing epoch: 0
 - Coordinator: Terra / medium
 - Active skill: pending classification
 - Active model: Terra / medium
-- Independent failures: 0
+- Independent failures in current epoch: 0
+- Started at: not recorded
 - Last material progress: not recorded
+- Sol outcome: pending/none
+- Astra outcome: pending/none
 - Escalation required: no
 - Escalated to: none
 - Escalation reason: none
@@ -18,8 +22,8 @@
 ## Attempt ledger
 
 <!-- attempt-ledger:start -->
-| # | Strategy / Hypothesis | Primitive | Independent? | Evidence gained | Result | Model |
-|---|---|---|---|---|---|---|
+| # | Epoch | Strategy / Hypothesis | Primitive ID | Variant | Independent? | Evidence gained | Result | Model |
+|---|---|---|---|---|---|---|---|---|
 <!-- attempt-ledger:end -->
 
 ## Confirmed facts

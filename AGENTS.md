@@ -98,7 +98,7 @@ unrecorded “one more attempt” or an unresolved repeated Terra loop.
 ## Evidence and safety
 
 - Search with `rg` first; prefer deterministic scripts, timeouts, and
-  checkpoints. Revisit assumptions after two failed variants or ten minutes
+  checkpoints. Revisit assumptions after two independent failed hypotheses or ten minutes
   without evidence.
 - Keep live flags only in `.local/`. Solvers derive a candidate at runtime and
   print it to stdout; tracked notes, proof, and write-ups redact it.
